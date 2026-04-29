@@ -87,9 +87,13 @@ uv run python -m kb.embed_documents
 
 ### Variables de entorno
 
-Pendiente de definir en `.env.example` (B2 del plan de Fase 0). Hasta entonces, las credenciales no están en el repo y los workers no son ejecutables E2E.
+Cada subproyecto tiene su propio `.env.example` versionado en repo:
 
-**Nunca** commitees `.env` ni credenciales. La regla nº 5 del Apéndice A es no negociable: variables de entorno o Supabase Vault.
+- **`apps/workers/.env.example`** — Supabase + Anthropic (mapeo de modelo por tarea según Lección 3 de `tasks/lessons.md`) + Voyage + Apollo + Gmail OAuth + mailbox config + Postmaster.
+- **`apps/dashboard/.env.example`** — Supabase (publishable + secret) + URL pública del panel + `ALLOWED_EMAILS` para auth allowlist.
+- **`apps/web/.env.example`** — Supabase (publishable + secret) + email de notificación del formulario de contacto.
+
+Convención: cada entorno copia su `.env.example` a `.env.dev` o `.env.prod` localmente y rellena los placeholders con valores reales tomados de **Bitwarden**. Nunca commitees `.env`, `.env.dev`, `.env.prod` ni cualquier `.env.*` que no sea el template — el `.gitignore` lo enforce con `.env / .env.* / !.env.example` en raíz, `apps/web/` y (cuando exista) `apps/dashboard/`. La regla nº 5 del Apéndice A es no negociable: variables de entorno o Supabase Vault.
 
 ## Estado actual
 

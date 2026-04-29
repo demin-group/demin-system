@@ -44,10 +44,10 @@
 Mapeo inicial recomendado:
 
 - `classify_descr` (filtro IA por descripción de empresa) → **Haiku**
-- `research_prospect` (extracción JSON de webs) → **Sonnet 4.5**
-- `generate_draft` (redacción de correos personalizados) → **Sonnet 4.5**
+- `research_prospect` (extracción JSON de webs) → **Sonnet 4.6**
+- `generate_draft` (redacción de correos personalizados) → **Sonnet 4.6**
 - `classify_reply` (clasificación de respuestas en 6 categorías) → **Haiku**
-- `suggest_response` (redacción sugerida para interesados) → **Sonnet 4.5**
+- `suggest_response` (redacción sugerida para interesados) → **Sonnet 4.6**
 - Cualquier worker nuevo → por defecto Sonnet; justificar en commit si necesita Opus, justificar en commit si baja a Haiku
 
 Estimación de coste mensual con este mapeo en régimen producción (1.500 envíos/mes + research previo + clasificación de respuestas): **~$50/mes**.
