@@ -1,0 +1,75 @@
+# ---- Entornos / secretos ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- Node ----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.npm/
+.yarn/
+
+# ---- Build outputs ----
+dist/
+build/
+out/
+.next/
+.nuxt/
+.svelte-kit/
+.turbo/
+.vercel/
+.netlify/
+.output/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+ENV/
+
+# ---- Logs ----
+*.log
+logs/
+
+# ---- IDE / OS ----
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Caches varios ----
+.cache/
+.parcel-cache/
+.eslintcache
+*.tsbuildinfo
+
+# ---- Coverage / test artifacts ----
+coverage/
+.nyc_output/
+htmlcov/
+.tox/
+
+# ---- Supabase local ----
+.supabase/
+supabase/.branches/
+supabase/.temp/
+
+# ---- Documentos confidenciales (NO commitear) ----
+docs/onboarding_demin.pdf
+docs/*_confidencial*.pdf
