@@ -120,6 +120,27 @@ Las referencias en plantillas, prompts y firma deben usar **`gonzalo.perez@demin
 
 ---
 
+## 2026-04-29 — Lección 6: Supabase Direct Connection es IPv6-only en free tier — usar Session Pooler para psycopg desde Windows
+
+**Contexto:** al aplicar las migrations de B7 desde Windows, `db.<project-ref>.supabase.co:5432` falló con `getaddrinfo failed` (DNS no resuelve). Causa raíz: Supabase deprecó IPv4 para direct connections en el free tier; solo publican AAAA (IPv6). El Windows 11 del dev no tiene routing IPv6 funcional hacia internet, así que la resolución cae.
+
+**Corrección humana:** [implícita por la propia documentación de Supabase] — cambiar a Session pooler (puerto 5432 con hostname `aws-N-<region>.pooler.supabase.com`, que sí publica A records).
+
+**Regla resultante:**
+
+- **Para psycopg / SQLAlchemy en local:** usar siempre **Session pooler** (no Direct, no Transaction). Formato:
+  ```
+  postgresql://postgres.<project-ref>:<password>@aws-N-<region>.pooler.supabase.com:5432/postgres
+  ```
+- **NO usar Transaction pooler (puerto 6543):** rompe `SET ROLE`, prepared statements y otras features de sesión que `verify_migrations.py` necesita.
+- **NO usar Direct connection (`db.<ref>.supabase.co:5432`):** IPv6-only, falla desde redes sin ruta v6.
+- Las regiones varían por proyecto: dev (`oribmklyxzhpqcpmqsce`) está en `aws-0-eu-west-1`, prod (`stxicalzpwrcjpaqdkdb`) está en `aws-1-eu-west-3`. Se obtienen del Dashboard → Connect → Session pooler.
+- El placeholder `[YOUR-PASSWORD]` que Supabase mete en la URL del Dashboard hay que sustituirlo manualmente por el password real (literal entre corchetes, no es interpolación).
+
+**Aplicado en:** B7 — `apps/workers/.env.dev` y `.env.prod` configurados con Session pooler. 5/5 checks pasaron en ambos entornos.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
