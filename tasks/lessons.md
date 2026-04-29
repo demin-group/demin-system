@@ -56,6 +56,52 @@ Estimación de coste mensual con este mapeo en régimen producción (1.500 enví
 
 ---
 
+## 2026-04-29 — Lección 4: decisiones operativas de outreach en Bloque A — 1 buzón inicial + warm standby, cadencia espaciada, caps conservadores, Postmaster Tools como monitor oficial
+
+**Contexto:** durante el setup del Bloque A, tras analizar trade-offs de coste, gestión y deliverability, se han revisado varias decisiones del plan §9 (Sistema de envío). El plan original era ambicioso (3 buzones desde día 1, cadencia D+0/D+4/D+10, cap 50/día). La realidad operativa que se ha decidido es más conservadora.
+
+**Decisiones aplicables cuando se construya B2 (`.env.example`) y la Fase 2 (envío real):**
+
+### 1. Buzones (modifica §9.1 cuando se actualice el plan)
+
+- **Activo desde día 1:** `gonzalo.perez@demingroupmadrid.com`
+- **Warm standby (crear el día 14):** `contacto@demingroupmadrid.com` con warmup en background, sin envíos en frío hasta que degrade el principal
+- **Eliminado del plan:** `hola@` (no se crea salvo crecimiento futuro)
+
+### 2. Cadencia (modifica §9.2)
+
+Pasos de la sequence `demin_v1`:
+
+```json
+[
+  {"day": 0,  "angle": "opening"},
+  {"day": 12, "angle": "reframe"},
+  {"day": 30, "angle": "closing"}
+]
+```
+
+Razón: 1 buzón único soporta cadencia más lenta sin saturarse ni perder coherencia de remitente.
+
+### 3. Caps (modifica §9.3)
+
+- Cap inicial post-warmup: **10/día** semana 1
+- Rampa: **+5/semana**
+- Cap máximo: **40/día** (no 50)
+
+### 4. Monitorización (modifica §9.4)
+
+- **Google Postmaster Tools** como fuente oficial de deliverability del dominio. Configuración: registro TXT en DNS de Namecheap para verificar el dominio en Postmaster.
+- **Lemwarm** sigue siendo el monitor operativo continuo.
+- Auto-pausa thresholds sin cambios respecto al plan: bounce >2%, spam >0.1%, score amarillo en Lemwarm.
+
+### 5. Notación del remitente
+
+Las referencias en plantillas, prompts y firma deben usar **`gonzalo.perez@demingroupmadrid.com`** (con punto, no `gonzalo@` ni `g.perez@`). Display name **"Gonzalo Pérez"**.
+
+**Aplicado en:** pendiente. Se aplicará al construir **B2** y después en Fase 2 (Sistema de envío). La regla queda registrada ahora para no olvidarla.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
