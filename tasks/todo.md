@@ -2,7 +2,7 @@
 
 > **Documento maestro.** Es la fuente de verdad para Claude Code. Todo lo que no esté aquí no se hace sin preguntar al humano. Todo lo que esté aquí marcado como `[DECIDIDO]` no se cuestiona — son decisiones tomadas tras conversaciones largas; cambiarlas requiere consulta explícita.
 
-**Estado:** plan v1.1 — pendiente de iniciar Fase 0 (añadido sitio web público en §13)
+**Estado:** plan v1.2 — sincronizado con cierre de Bloque A (dominio, embeddings, warmup, costes; ver §19)
 **Última actualización:** 2026-04-29
 
 ---
@@ -114,9 +114,9 @@ Métricas operativas que sí trackeamos para diagnosticar (no como objetivo): bo
 | Workers / pipeline | Python 3.11 en VPS Hetzner CX22 (~5€/mes) | Cron + systemd; SQLAlchemy hacia Supabase |
 | Cola de jobs | Postgres con tabla `jobs` + worker pull | Suficiente al volumen; sin Redis ni Celery |
 | LLM | Anthropic Claude Sonnet 4.5 (clasificación + redacción + extracción) | Calidad alta y precio razonable |
-| Embeddings | Voyage AI `voyage-3` o `text-embedding-3-small` de OpenAI | A elegir en Fase 1; ambos baratos |
+| Embeddings | Voyage AI `voyage-multilingual-2` (1024 dim) | Decidido en Bloque A. Multilingüe (ES nativo) y casa con `vector(1024)` del schema §6.2 |
 | Email envío | Gmail API + dominio propio + Workspace | Custom según D3 |
-| Email warmup | Lemwarm o Warmup Inbox (~10-15€/buzón/mes) | Externalizado |
+| Email warmup | Lemwarm Essential 29€/mes standalone (1 buzón) | Descartados Warmup Inbox y Smartlead por bloqueo de App Passwords / OAuth no verificado en Workspace |
 | Scraping | Python `httpx` + `selectolax` + `tldextract` | Más rápido que requests+BS4 |
 | Browser-needed scraping | `playwright` (cuando JS bloquee httpx) | Solo si fallback |
 | Enriquecimiento de decisores | Apollo.io API plan Basic (~$49/mes) | Para Tier 4 sin web |
@@ -132,14 +132,14 @@ Métricas operativas que sí trackeamos para diagnosticar (no como objetivo): bo
 ```
 demin-system/
 ├── apps/
-│   ├── web/                          # Sitio público (demingroup.es) — Vercel
+│   ├── web/                          # Sitio público (demingroupmadrid.com) — Vercel
 │   │   ├── app/
 │   │   │   ├── page.tsx              # Landing one-pager con anchors
 │   │   │   └── api/contact/route.ts  # Endpoint del formulario → Supabase
 │   │   ├── components/
 │   │   ├── public/                   # Imágenes de obras (aporta Gonzalo)
 │   │   └── package.json
-│   ├── dashboard/                    # Panel autenticado (app.demingroup.es) — Vercel
+│   ├── dashboard/                    # Panel autenticado (app.demingroupmadrid.com) — Vercel
 │   │   ├── app/
 │   │   │   ├── (auth)/login
 │   │   │   ├── pipeline/             # Pantalla 1
@@ -756,8 +756,8 @@ DEMIN no tiene web. **Esto es un bloqueador para outreach** por dos razones: pro
 Una sola página con anchors. Tiempo de construcción objetivo: **4-6 horas con Claude Code**. Stack idéntico al dashboard (Next.js 15 + Tailwind, sin shadcn aquí), monorepo en `apps/web/`, despliegue en Vercel free tier. Coste adicional: **0€**.
 
 Routing:
-- `demingroup.es` (root, público) → `apps/web/`
-- `app.demingroup.es` (auth required) → `apps/dashboard/`
+- `demingroupmadrid.com` (root, público) → `apps/web/`
+- `app.demingroupmadrid.com` (auth required) → `apps/dashboard/`
 
 ### 13.2 Secciones
 
@@ -821,7 +821,7 @@ Eso es v2 si tiene sentido, no antes.
 ### Fase 0 — Setup (semana 1)
 
 **Infra básica:**
-- [ ] Comprar dominio `demingroup.es` (verificar libre primero)
+- [x] Comprar dominio `demingroupmadrid.com` (Namecheap, expira 29/04/2027, auto-renew ON)
 - [ ] Crear Google Workspace con 3 buzones
 - [ ] Configurar SPF, DKIM, DMARC en DNS
 - [ ] Activar APIs de Gmail en Google Cloud Console + crear OAuth client
@@ -839,7 +839,7 @@ Eso es v2 si tiene sentido, no antes.
 - [ ] Recopilar de Gonzalo 4-8 imágenes de obras reales
 - [ ] Implementar formulario `/api/contact` + tabla `web_leads`
 - [ ] Aviso legal + política de privacidad + cookies (plantillas RGPD-ready)
-- [ ] Configurar `demingroup.es` → web; `app.demingroup.es` → dashboard
+- [ ] Configurar `demingroupmadrid.com` → web; `app.demingroupmadrid.com` → dashboard
 - [ ] Test de envío del formulario end-to-end
 
 **Contenido:**
@@ -932,18 +932,18 @@ Definidos al final de cada fase (§14).
 
 | Concepto | Coste |
 |---|---|
-| Dominio (`demingroup.es`) | ~1€/mes (~12€/año) |
-| Google Workspace (3 buzones) | ~18€ |
-| Lemwarm warmup (3 buzones) | ~30-45€ |
+| Dominio (`demingroupmadrid.com`) | ~1€/mes (~12€/año) |
+| Google Workspace (1-2 buzones)        | 6-12€ (1 buzón ahora; +1 desde día 14)   |
+| Lemwarm Essential (1-2 seats)         | 29-58€ (idem; cada seat son 29€/mes)      |
 | Apollo Basic API | ~45€ |
 | Anthropic API (uso normal) | ~20-30€ |
-| Embeddings (Voyage/OpenAI) | ~2-5€ |
+| Embeddings (Voyage AI) | ~2-5€ |
 | Hetzner VPS CX22 | ~5€ |
 | Vercel | 0€ (free tier) |
 | Supabase | 0€ (free tier) |
-| **Total** | **~120-150€/mes** |
+| **Total**                              | **~113-148€/mes** (rango según día 1 vs día 14+) |
 
-Margen ajustado al techo. Si se supera: reducir warmup a 2 buzones (-15€), o pasar de Apollo Basic a uso puntual (-30€).
+Margen ajustado al techo de 150€. Configuración inicial (1 buzón + 1 Lemwarm seat) deja ~37€ de holgura. Configuración estable post-día-14 (2 buzones + 2 seats) consume casi todo el margen. Palancas si se supera: aplazar buzón warm standby más allá del día 14 (-35€/mes), o pasar Apollo de Basic a uso puntual (-30€/mes). Cualquiera de las dos garantiza margen cómodo.
 
 ---
 
@@ -951,7 +951,7 @@ Margen ajustado al techo. Si se supera: reducir warmup a 2 buzones (-15€), o p
 
 Esto NO lo construye Claude Code. Necesita coordinarse con el humano para obtenerlo:
 
-- [ ] Decisión final sobre dominio (`demingroup.es` o alternativa)
+- [x] Decisión final sobre dominio (`demingroupmadrid.com` — comprado en Bloque A)
 - [ ] Acceso administrativo a Workspace
 - [ ] Sesión de 60-90 min para producir KB inicial (§7.1)
 - [ ] 5-10 correos reales suyos (con permiso) para entrenar tono
@@ -975,6 +975,17 @@ Plan v1 escrito tras conversación de scoping. Pendiente de validación humana a
 
 Se identificó que DEMIN no tiene web. Sin web, los prospectos que googleen al remitente del correo en frío no encuentran nada → conversion penalizada y deliverability empeorada. Solución: landing one-pager construida en Fase 0 en `apps/web/`, mismo stack que el dashboard, despliegue separado en `demingroup.es`. Coste adicional 0€. Ver §13.
 
+### 2026-04-29 — Cierre Bloque A
+
+- **Dominio:** `demingroupmadrid.com` (Namecheap, expira 29/04/2027, auto-renew ON).
+- **Workspace:** Business Starter + 1 buzón activo `gonzalo.perez@demingroupmadrid.com` con display "Gonzalo Pérez". 2FA por SMS activado.
+- **DNS:** SPF + DKIM + DMARC + MX en verde. CTD (Custom Tracking Domain) explícitamente NO se configura — justificación en `tasks/lessons.md` Lección 5.
+- **Postmaster Tools** verificado para el dominio.
+- **Cuentas creadas:** Anthropic ($25 créditos), Voyage AI (free tier), Supabase (2 proyectos: `demin-prod` y `demin-dev`), Vercel Hobby, GitHub `demin-group/demin-system` privado. Credenciales en Bitwarden, no en repo.
+- **Lemwarm Essential** 29€/mes activado, warmup arrancado el 2026-04-29.
+- **Decisiones operativas Bloque A** ya capturadas en `tasks/lessons.md` Lección 4: 1 buzón + warm standby día 14, cadencia D+0/D+12/D+30, caps 10 → +5/sem → 40, Postmaster Tools como monitor oficial.
+- **TODO conocido pre-Fase 2:** `docs/dossier_demin.pdf` referencia el dominio antiguo (`demolicionesdemingroup.com`) y el gmail antiguo (`demin.groupmadrid@gmail.com`). Bloqueante de inicio de cadencia: regenerar el dossier con la identidad nueva antes de Fase 2.
+
 ---
 
 ## Apéndice A — Reglas no negociables (resumen para Claude Code)
@@ -990,4 +1001,4 @@ Se identificó que DEMIN no tiene web. Sin web, los prospectos que googleen al r
 9. **Siempre** que detectes desviación del plan, para y pregunta antes de seguir.
 10. **Siempre** captura lecciones en `tasks/lessons.md` tras cualquier corrección humana.
 11. **Nunca** inventes clientes, testimonios, casos de éxito o cifras en la web pública. Solo material que Gonzalo aporte y autorice.
-12. **Siempre** mantén la separación de despliegue: `demingroup.es` (web pública, sin auth) ≠ `app.demingroup.es` (dashboard, auth obligatoria). Nada del dashboard debe ser accesible desde el dominio raíz.
+12. **Siempre** mantén la separación de despliegue: `demingroupmadrid.com` (web pública, sin auth) ≠ `app.demingroupmadrid.com` (dashboard, auth obligatoria). Nada del dashboard debe ser accesible desde el dominio raíz.
