@@ -900,13 +900,13 @@ Eso es v2 si tiene sentido, no antes.
 
 ### Fase 1 — Pipeline + KB + dashboard mínimo (semanas 2-3)
 
-- [ ] Schema de BD aplicado (migrations §6)
+- [x] Schema de BD aplicado (migrations §6) — 01-08 aplicadas en dev y prod (Sprint 1)
 - [ ] Worker `ingest_sabi.py` carga el Excel a `companies` con tier asignado
 - [ ] Worker `classify_descr.py` corre sobre los 1.737 (~2€)
-- [ ] Worker `embed_documents.py` indexa el KB
-- [ ] Pantalla "KB editor" funcional (CRUD)
+- [x] Worker `embed_documents.py` indexa el KB — 6 docs / 27 chunks en dev y prod (Sprint 1 paso 2)
+- [x] Pantalla "KB editor" funcional (CRUD) — con re-embed inline al guardar (Sprint 1 paso 4)
 - [ ] Pantalla "Pipeline" funcional (read-only)
-- [ ] Auth con magic link
+- [x] Auth con magic link — operativa desde Bloque B3 (pre-Sprint 1)
 - [ ] Worker `research_prospect.py` ejecutado sobre los `ia_fit='fit'` con web (~5€)
 - [ ] Worker `scrape_emails.py` ejecutado sobre los mismos
 - [ ] Worker `apollo_enrich.py` integrado y ejecutado sobre Tier 4
@@ -1225,6 +1225,45 @@ Distribución por categoría idéntica en ambos: `casos_exito` 5, `diferenciador
 **Pendiente para cerrar Sprint 1:** paso 3 (ya cubierto por el smoke verde) y paso 4 (KB editor en dashboard, Bloque B). Sprint 1 NO se cierra hasta que el dashboard tenga la pantalla CRUD del KB.
 
 **Lecciones nuevas registradas en `tasks/lessons.md`:** 16 (config se adapta a la convención del repo, no al revés — capturada en Sprint 1 paso 1), 17 (criterio de validación de smokes se diseña leyendo el contenido real, no a priori).
+
+### 2026-05-04 — Cierre Sprint 1: cimientos + KB embebido + KB editor
+
+Sprint 1 de la Fase 1 cerrado. Quedan disponibles los cuatro cimientos sobre los que se monta el resto de la fase: (1) `apps/workers/shared/` con config dual dev/prod, conexión SQLAlchemy 2.0 + psycopg3, cliente LLM con `MODEL_FOR_TASK` + Voyage asimétrico + retries; (2) KB embebido en ambos entornos (6 docs / 27 chunks) con smoke retrieval VERDE 3/3 y criterio recalibrado; (3) pantalla `/kb` en el dashboard con CRUD completo y re-embed inline al guardar (Node runtime, `maxDuration=60`, fetch directo a Voyage REST), validada manualmente en browser por Gonzalo + smoke E2E backend; (4) migration 08 que añade `kb_documents.embeddings_updated_at` con backfill `now()` para los 6 docs ya indexados.
+
+**Mecanismo de re-embed elegido (Sprint 1 paso 4):** inline en Server Action / Route Handler del dashboard, con runtime Node y `maxDuration=60`. Descartadas (a) cola de jobs en Postgres (requería tocar `apps/workers/`, fuera de scope), (b) Edge Function (reescribir el chunker en Deno), (c) webhook a worker (no hay VPS aún). Justificado por: stack Node ya tiene `fetch` y `supabase-js`, sin infra nueva, feedback inmediato en UI, cabe en Vercel Hobby.
+
+**14 commits del Sprint 1 (en orden cronológico):**
+
+| paso | hash | mensaje |
+|---|---|---|
+| 1 | `b1dd6f1` | feat(workers/shared): config con pydantic-settings y selector dev/prod |
+| 1 | `df4fb13` | feat(workers/shared): db con sqlalchemy 2.0 + psycopg3 |
+| 1 | `011a418` | feat(workers/shared): llm con MODEL_FOR_TASK + voyage embed + retries |
+| 1 | `e10c504` | test(workers): smoke script para validar shared/ |
+| 2 | `0d6f215` | feat(workers/scripts): seed_kb_dev replica kb_documents prod -> dev |
+| 2 | `f2ab698` | feat(workers/kb): embed_documents con chunking por chars + Voyage batch |
+| 2 | `de3bc77` | feat(workers/shared): embed acepta input_type document/query asimetrico |
+| 2 | `1545de9` | test(workers): smoke_kb_retrieval recalibrado con criterio de utilidad |
+| 2 | `349fb96` | chore(workers): apply embeddings a prod (kb_chunks 0 -> 27) |
+| 4 | `8e02b27` | feat(infra): migration 08 — kb_documents.embeddings_updated_at + backfill |
+| 4 | `c75f28c` | feat(dashboard/lib): chunker + voyage + reembed + admin client para KB editor |
+| 4 | `79da264` | feat(dashboard/api): rutas CRUD de kb_documents con reembed inline |
+| 4 | `8b6fc77` | feat(dashboard/kb): UI editor con lista, edicion inline y eliminacion |
+| 4 | `6dba553` | chore(dashboard): VOYAGE env + tsx/dotenv devDeps + smoke E2E del KB |
+
+(El paso 3 — aplicar embeddings a prod — quedó cubierto por `349fb96` dentro del paso 2; no generó commit propio.)
+
+**Pendiente para Sprint 2 (ingesta SABI, sesión nueva):**
+
+- [ ] Worker `ingest_sabi.py` carga el Excel (5.619 filas × 19 columnas, ya en `docs/sabi_madrid_demoliciones.xlsx`) a `companies` con tier asignado según §8.2.
+- [ ] Worker `classify_descr.py` con Claude Haiku sobre los ~1.737 con descripción válida (~2€).
+- [ ] Worker `research_prospect.py` sobre los `ia_fit='fit'` con web search (~5€).
+- [ ] Worker `scrape_emails.py` sobre los mismos.
+- [ ] Worker `apollo_enrich.py` para Tier 4 (decisor sin email tras scrape).
+- [ ] Worker `verify_emails.py` validado contra MillionVerifier.
+- [ ] Pantalla `/pipeline` (read-only) en el dashboard.
+
+Fase 1 NO se cierra hasta que el Sprint 2 entregue la lista cualificada de ~400-500 leads (criterio de salida §14).
 
 ---
 
