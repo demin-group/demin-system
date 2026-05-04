@@ -2,8 +2,8 @@
 
 > **Documento maestro.** Es la fuente de verdad para Claude Code. Todo lo que no esté aquí no se hace sin preguntar al humano. Todo lo que esté aquí marcado como `[DECIDIDO]` no se cuestiona — son decisiones tomadas tras conversaciones largas; cambiarlas requiere consulta explícita.
 
-**Estado:** plan v1.2 — sincronizado con cierre de Bloque A (dominio, embeddings, warmup, costes; ver §19)
-**Última actualización:** 2026-04-29
+**Estado:** plan v1.3 — Bloque A CERRADO + Bloque C CERRADO (web pública en producción `https://demingroupmadrid.com`, deploy 2026-05-04; ver §19)
+**Última actualización:** 2026-05-04
 
 ---
 
@@ -882,18 +882,18 @@ Eso es v2 si tiene sentido, no antes.
 - [ ] Inicializar repo con la estructura de §5
 - [ ] Crear `.env.example` con todas las variables esperadas (sin valores)
 
-**Web pública (en paralelo, §13):**
-- [ ] Inicializar `apps/web/` con Next.js 15 + Tailwind
-- [ ] Construir landing one-pager con las 7 secciones de §13.2
-- [ ] Recopilar de Gonzalo 4-8 imágenes de obras reales
-- [ ] Implementar formulario `/api/contact` + tabla `web_leads`
-- [ ] Aviso legal + política de privacidad + cookies (plantillas RGPD-ready)
-- [ ] Configurar `demingroupmadrid.com` → web; `app.demingroupmadrid.com` → dashboard
-- [ ] Test de envío del formulario end-to-end
+**Web pública (en paralelo, §13):** ✅ Bloque C CERRADO 2026-05-04
+- [x] Inicializar `apps/web/` con Next.js 15 + Tailwind
+- [x] Construir landing one-pager con las 7 secciones de §13.2
+- [x] Recopilar de Gonzalo 4-8 imágenes de obras reales (7 fotos procesadas, ver §19 entrada 2026-05-01)
+- [x] Implementar formulario `/api/contact` + tabla `web_leads`
+- [x] Aviso legal + política de privacidad + cookies (plantillas RGPD-ready)
+- [x] Configurar `demingroupmadrid.com` → web (apex + www, A record + CNAME en Namecheap → Vercel). `app.demingroupmadrid.com` → dashboard pendiente de despliegue del Bloque B (dashboard).
+- [x] Test de envío del formulario end-to-end (smoke E2E en producción 2026-05-04: insert en `web_leads` de demin-prod + email a Gonzalo desde `noreply@demingroupmadrid.com`)
 
 **Contenido:**
-- [ ] Sesión con Gonzalo (60-90 min) para producir el contenido inicial del KB (§7.1)
-- [ ] Exportar correos reales de Gonzalo (5-10) para `kb_documents.correos_gonzalo`
+- [x] Sesión con Gonzalo (60-90 min) para producir el contenido inicial del KB (§7.1) — sesión 1 cargada 2026-04-29 + sesión 2 enriquecimiento 2026-05-04 (commits 768b915 y 6aa9da4)
+- [ ] Exportar correos reales de Gonzalo (5-10) para `kb_documents.correos_gonzalo` — **STANDBY PERMANENTE** (Lección 11): los correos archivados aportados son plantilla SaaS genérica, no voz auténtica. Doc 7 no se construye salvo que Gonzalo aporte material espontáneo distinto. Las 7 frases gatillo derivadas de las respuestas reales de prospectos sí se aplicaron a `tasks/kb_objeciones_v1.json`.
 - [ ] Subir Excel de Sabi y los PDFs originales a `docs/`
 
 **Criterio de salida Fase 0:** dominio activo con web pública desplegada y formulario funcional, buzones en warmup, repo inicializado con docs, KB con contenido de Gonzalo en bruto (Markdown plano, antes de embedding).
@@ -1014,10 +1014,10 @@ Esto NO lo construye Claude Code. Necesita coordinarse con el humano para obtene
 
 - [x] Decisión final sobre dominio (`demingroupmadrid.com` — comprado en Bloque A)
 - [ ] Acceso administrativo a Workspace
-- [ ] Sesión de 60-90 min para producir KB inicial (§7.1)
-- [ ] 5-10 correos reales suyos (con permiso) para entrenar tono
-- [ ] **4-8 imágenes de obras reales** (idealmente antes/después) para la web (§13.3)
-- [ ] **Aprobación del color de acento** y estilo general de la web
+- [x] Sesión de 60-90 min para producir KB inicial (§7.1) — completada en 2 partes: sesión 1 (2026-04-29, KB v1 cargado) y sesión 2 (2026-05-04, parche de objeciones + correos referencia). Decisión humana: NO habrá 3ª sesión.
+- [ ] 5-10 correos reales suyos (con permiso) para entrenar tono — **STANDBY PERMANENTE** tras sesión 2 (Lección 11)
+- [x] **4-8 imágenes de obras reales** (idealmente antes/después) para la web (§13.3) — 7 fotos recibidas vía WhatsApp y procesadas 2026-05-01
+- [x] **Aprobación del color de acento** y estilo general de la web — implícitamente aprobado al desplegar a producción 2026-05-04
 - [ ] Aprobación de drafts en Fase 2 (presencia diaria 15-30 min)
 - [ ] Validación de tono y mensajes tras primer batch
 - [ ] Gestión de reuniones que cierre el sistema
@@ -1148,6 +1148,56 @@ correos generados. Cada correo es redacción IA completa, personalizada
 al prospecto, alimentada por el KB y por el research previo (decisión D8
 del plan §3). Las plantillas archivadas de Gonzalo son referencia
 negativa, no modelo a replicar.
+
+### 2026-05-04 — Cierre Bloque C: web pública en producción
+
+**Estado:** `https://demingroupmadrid.com` sirve la landing one-pager construida en sesiones anteriores. HTTPS (Let's Encrypt automático vía Vercel). `www.demingroupmadrid.com` redirige al apex. Bloque C cerrado.
+
+**Vercel.** Proyecto `demin-web` en cuenta Hobby de `gonzalo.perez@demingroupmadrid.com`. Root directory `apps/web/`, framework Next.js detectado, build OK. 6 env vars en scope `Production` apuntando a `demin-prod`:
+
+| Variable | Valor / origen |
+|---|---|
+| `NEXT_PUBLIC_SITE_URL` | `https://demingroupmadrid.com` |
+| `NEXT_PUBLIC_SUPABASE_URL` | URL del proyecto `demin-prod` |
+| `SUPABASE_SERVICE_ROLE_KEY` | secret key formato nuevo (`sb_secret_...`) de `demin-prod` |
+| `RESEND_API_KEY` | API key Resend (dominio `demingroupmadrid.com` verificado) |
+| `CONTACT_FROM_EMAIL` | `DEMIN Group <noreply@demingroupmadrid.com>` |
+| `CONTACT_NOTIFICATION_EMAIL` | `gonzalo.perez@demingroupmadrid.com` |
+
+Justificación de Production-only (no Preview/Development): las credenciales apuntan a infra real; activar Preview con los mismos valores haría que cualquier branch deploy escribiera leads reales en `web_leads` de prod y disparara emails reales desde URLs `*.vercel.app`. Capturado como Lección 14.
+
+**GitHub.** Repo `demin-group/demin-system` pasó de privado a público durante el deploy. Motivo: Vercel Hobby no permite conectar repos privados de GitHub Organizations; la única alternativa gratis era hacerlo público (la otra sería migrar el repo a una cuenta personal). Decisión: público es seguro porque las credenciales viven exclusivamente en `.env.local` (gitignored) y en variables de entorno de Vercel; el repo nunca contuvo secretos en commits. Capturado como Lección 12.
+
+**DNS Namecheap.** Registros borrados:
+- URL Redirect `@` → parking de Namecheap.
+- CNAME `www` → `parkingpage.namecheap.com`.
+
+Registros añadidos:
+- A Record `@` → `216.198.79.1` (IP de Vercel).
+- CNAME `www` → `cname.vercel-dns.com`.
+
+Resto de registros DNS intactos: SPF/DKIM/DMARC/MX de Workspace de Gonzalo + DNS de Resend (`send.demingroupmadrid.com`). Coordinación de DNS y validación con `dnschecker.org` antes de pulsar Refresh en Vercel capturada como Lección 13.
+
+**Legal cerrado.** Aviso legal con NIF `06619073H` de Gonzalo Pérez Sánchez-Marín (LSSI 10.1 completo). Política de privacidad ampliada con sección 5 (Destinatarios y encargados de tratamiento): Supabase Inc. (`eu-west-1`, Fráncfort), Resend Inc. (`eu-west-1`, Dublín), Vercel Inc. (CDN global con presencia UE). Decisión editorial: la sección dice "el almacenamiento de los datos del formulario se realiza en la Unión Europea" en lugar de "no se realizan transferencias internacionales fuera del EEE", porque el CDN global de Vercel haría falsa esta segunda afirmación. Política de cookies sin cambios (solo técnicas necesarias, sin tracking de terceros).
+
+**Assets visuales generados.** Script `apps/web/scripts/generate-assets.mjs` (ejecutable con `npm run generate-assets`) usa `sharp` (dep transitiva de Next 15, no añadida explícitamente) para producir:
+
+- `public/favicon.ico` (32×32, ~1.3 KB, formato ICO con PNG embebido)
+- `app/icon.png` (192×192, ~20 KB) y `app/apple-icon.png` (180×180, ~18 KB) — convención App Router de Next
+- `public/og-image.jpg` (1200×630, 152 KB, foto hero `obras/hero-boveda-ladrillo.jpg` + overlay negro 55% + logo + claim "La fase cero de tu reforma")
+
+`metadata.openGraph` y `metadata.twitter` en `app/layout.tsx` apuntan a `/og-image.jpg` con `width: 1200` / `height: 630`. Twitter card sin `creator`/`site` (DEMIN no tiene cuenta en X).
+
+**Smoke test E2E en producción exitoso.** Submit del formulario en `demingroupmadrid.com` → fila insertada en `web_leads` de `demin-prod` + email de notificación a `gonzalo.perez@demingroupmadrid.com` desde `noreply@demingroupmadrid.com` con asunto "Nuevo lead — ...". Tiempo total ~2s. Fila de prueba "Alberto - SMOKE TEST PROD" pendiente de borrado en próxima sesión técnica.
+
+**TODOs post-launch (no bloqueantes, ninguno cierra el Bloque C):**
+
+- [ ] Borrar fila de prueba "Alberto - SMOKE TEST PROD" en `web_leads` de `demin-prod` (1 fila).
+- [ ] Verificar dominio `demingroupmadrid.com` en Google Search Console y enviar `sitemap.xml`.
+- [ ] Pedir a Gonzalo logo en negro sobre transparente para uso en headers claros (actualmente el header renderiza wordmark Geist Sans en lugar del bloque gris del logo, decisión documentada en entrada 2026-05-01 de §19).
+- [ ] Rotar `RESEND_API_KEY` si en algún momento la API key actual se ha expuesto en canal no seguro (precaución estándar). La rotación durante la sesión ya se hizo una vez.
+
+**Lecciones nuevas registradas en `tasks/lessons.md`:** 12 (GitHub privado vs Vercel Pro), 13 (coordinación DNS Vercel/Namecheap), 14 (scope Production-only en Vercel), 15 (nombres exactos de env vars: `NEXT_PUBLIC_SUPABASE_URL` ≠ `SUPABASE_URL`).
 
 ---
 

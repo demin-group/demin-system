@@ -414,6 +414,69 @@ entrevista verbalizada tampoco era buen tono y hay que recalibrar
 
 ---
 
+## 2026-05-04 — Lección 12: GitHub Organizations + Vercel Hobby = repo público obligatorio
+
+**Contexto:** al conectar el repo `demin-group/demin-system` a Vercel para el primer deploy del Bloque C, Vercel rechaza la conexión porque el repo es privado y vive en una GitHub Organization. Vercel Hobby (plan gratuito) acepta repos privados solo desde cuentas personales individuales; los repos privados de GitHub Organizations requieren Vercel Pro (€20/mes). El techo presupuestario del proyecto (150€/mes) excluye este coste recurrente sin justificación operativa fuerte.
+
+**Regla resultante:** antes del primer deploy a Vercel desde un repo en una GitHub Organization, evaluar:
+
+- **(a) Hacer público el repo** — única alternativa gratis cuando el repo está en una org. Solo seguro si las credenciales viven exclusivamente en variables de entorno y archivos `.env.local` (gitignored), nunca en commits. Verificar con `git log -p | grep -iE 'secret|key|password|token'` antes de cambiar visibilidad. En este proyecto se hizo público por esta razón; las credenciales viven en `apps/web/.env.local` (gitignored vía `.env.*` con whitelist `!.env.example`) y en variables de entorno de Vercel.
+- **(b) Migrar el repo a una cuenta personal** de GitHub — mantiene el repo privado en Vercel Hobby. Coste: pierdes la pertenencia a la organización y los permisos compartidos.
+- **(c) Pagar Vercel Pro** — €20/mes adicionales, solo si el repo DEBE seguir privado en una org.
+
+**Por qué importa anticiparlo:** descubrirlo durante el deploy detiene el flujo y obliga a tomar una decisión bajo presión. Si la decisión correcta para el proyecto es (a), es preferible haber hecho la auditoría de secretos en el repo con calma antes, no en mitad del deploy.
+
+**Aplicado en:** `demin-group/demin-system` cambiado a público el 2026-05-04 antes del deploy.
+
+---
+
+## 2026-05-04 — Lección 13: coordinación DNS Vercel ↔ proveedor de dominio (Namecheap)
+
+**Contexto:** al apuntar `demingroupmadrid.com` a Vercel, los registros DNS existentes (URL Redirect `@` → parking de Namecheap, CNAME `www` → `parkingpage.namecheap.com`) chocaban con los que Vercel pide (A Record `@` → IP de Vercel, CNAME `www` → `cname.vercel-dns.com`). Vercel mostraba "Invalid Configuration" hasta que los registros viejos se borraron y los nuevos propagaron.
+
+**Regla resultante:** para apuntar un dominio a Vercel desde un proveedor distinto (Namecheap, GoDaddy, Cloudflare, etc.) seguir esta secuencia:
+
+1. **Antes de añadir nada:** identificar y borrar registros existentes que choquen con la configuración pedida por Vercel (típicamente: URL Redirect del apex, CNAME `www` apuntando a parking del proveedor, A Records apuntando a IPs del proveedor).
+2. **Añadir los registros nuevos** que Vercel especifica para el dominio concreto. La IP de Vercel para A Records cambia ocasionalmente — siempre copiar la que muestra la pantalla de Domains del proyecto, no fijarla a memoria.
+3. **NO mezclar registros viejos y nuevos en paralelo:** algunos proveedores aplican el orden lexicográfico o el primero que respondió, lo que produce resultados intermitentes.
+4. **SAVE ALL CHANGES** explícitamente en Namecheap (botón verde arriba a la derecha del panel de DNS). Editar registros sin pulsar Save no aplica los cambios; es un fallo silencioso fácil de pasar.
+5. **Verificar propagación con `dnschecker.org/#A/<dominio>`** ANTES de pulsar Refresh en Vercel. La propagación tarda 5-30 min según TTL del registro previo. Refrescar Vercel antes de tiempo entra en bucle de "Invalid Configuration" que confunde sin razón.
+6. **Mantener intactos los registros DNS no-web del dominio:** SPF / DKIM / DMARC / MX de Workspace (correo) y registros de Resend (envío transaccional). Solo se tocan los registros que sirven HTTP del apex y `www`.
+
+**Aplicado en:** DNS de `demingroupmadrid.com` reconfigurado en Namecheap el 2026-05-04. Resto de registros (Workspace + Resend `send.demingroupmadrid.com`) intactos. Smoke test E2E del formulario validó que el correo transaccional de Resend siguió funcionando tras el cambio.
+
+---
+
+## 2026-05-04 — Lección 14: variables de entorno en Vercel — Production-only por defecto cuando apuntan a infra real
+
+**Contexto:** al configurar las 6 env vars del proyecto Vercel `demin-web`, el dropdown "Environments" permite marcar `Production` / `Preview` / `Development` independientemente. La tentación cómoda es marcar las tres para que "funcione en todos lados". Esto es incorrecto cuando los valores apuntan a infra real (Supabase prod, Resend con dominio verificado, claves con permisos de escritura).
+
+**Regla resultante:** el toggle Production / Preview / Development debe configurarse intencionalmente, no por defecto:
+
+- **Production-only** es lo correcto cuando las credenciales apuntan a la BD de producción y/o a servicios externos con efectos visibles (envío de emails reales, escrituras en BD prod, llamadas con coste a APIs). Razón: si se activa Preview con los mismos valores, cualquier branch deploy escribiría leads reales en la BD prod y dispararía emails reales a producción desde URLs `*.vercel.app`. No es riesgo teórico — basta que alguien empuje una rama experimental con el formulario auto-rellenado para meter ruido en `web_leads` de prod o spamear al destinatario de notificaciones.
+- **Preview / Development separadas** solo si se proveen credenciales independientes (proyecto Supabase de dev, API key de Resend de sandbox/dominio aparte, etc.). Esto multiplica la matriz de configuración por entorno; vale la pena solo cuando se va a usar de verdad.
+
+**Por qué surge el malentendido:** la mayoría de tutoriales online asumen entornos de juguete o usan una sola key para todo. La distinción importa cuando hay infra real detrás. La pregunta correcta a hacerse al marcar el toggle es: "si esta variable se filtra en un branch deploy efímero accesible por URL pública, ¿pasa algo malo?". Si la respuesta es sí, scope Production-only.
+
+**Aplicado en:** las 6 env vars del proyecto Vercel `demin-web` están en scope Production exclusivamente. Cuando se despliegue el dashboard (Bloque B, `app.demingroupmadrid.com`) la decisión se reevaluará: si se quiere un entorno de staging real para probar cambios del dashboard antes de mergear, se creará un set separado apuntando a `demin-dev`.
+
+---
+
+## 2026-05-04 — Lección 15: el nombre de la variable de entorno lo manda el código, no el plan
+
+**Contexto:** durante la configuración de env vars en Vercel se intentó (por inercia del plan inicial y por consejo erróneo de una fuente externa) registrar la URL de Supabase como `SUPABASE_URL`. El código real en `apps/web/lib/supabase.ts:8` lee `process.env.NEXT_PUBLIC_SUPABASE_URL`. Si la variable hubiera quedado como `SUPABASE_URL`, el route handler `/api/contact` habría tirado el error literal "Missing Supabase env vars: set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local" en cuanto recibiera el primer formulario en producción. El error se evitó verificando el código antes de pulsar Save.
+
+**Regla resultante:**
+
+- **Antes de configurar variables en cualquier provider externo (Vercel, Render, Fly, Railway, etc.) verificar el nombre exacto que el código real lee.** Mecánica: `grep -rn "process.env\." apps/web/lib apps/web/app` (o el pattern equivalente del lenguaje) y comparar con la lista de variables que se va a registrar.
+- **Documentación, plan, `.env.example` y código pueden divergir.** El código es la fuente de verdad: es lo que se ejecuta en producción. Plan y docs reflejan lo que se quería hacer en algún momento; pueden estar desactualizados.
+- **El prefijo `NEXT_PUBLIC_` no es decorativo en Next.js:** determina si la variable se inyecta en el bundle del navegador (con prefijo) o solo está disponible en server (sin prefijo). `NEXT_PUBLIC_SUPABASE_URL` y `SUPABASE_URL` son nombres distintos para Next.js, no alias. La URL de Supabase necesita prefijo `NEXT_PUBLIC_` porque el cliente del navegador puede necesitarla en futuras features (auth, realtime); el `SUPABASE_SERVICE_ROLE_KEY` NO lo lleva nunca porque bypassa RLS y no debe filtrarse al cliente.
+- **Cuando una fuente externa (humana o LLM) propone renombrar una env var "porque así es la convención", verificar contra el código antes de aplicar.** Las convenciones varían entre frameworks y entre versiones; el código del repo concreto manda.
+
+**Aplicado en:** durante el deploy del 2026-05-04 se mantuvo `NEXT_PUBLIC_SUPABASE_URL` como Key en Vercel tras verificación con `grep` contra `apps/web/lib/supabase.ts`. El smoke test E2E posterior confirmó que el formulario escribe en `web_leads` de prod sin error.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
