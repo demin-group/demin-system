@@ -141,6 +141,55 @@ Las referencias en plantillas, prompts y firma deben usar **`gonzalo.perez@demin
 
 ---
 
+## 2026-05-01 — Lección 7: en Supabase, RLS sin GRANT no es suficiente cuando se accede vía PostgREST
+
+**Contexto:** primer smoke test del route handler `/api/contact` en Bloque C. La REST API de Supabase devolvía `403 — permission denied for table web_leads — Grant the required privileges to the current role with: GRANT SELECT ON public.web_leads TO service_role`. El bug afectaba a las 12 tablas, no solo `web_leads`.
+
+**Causa raíz:** PostgreSQL separa dos capas de control de acceso:
+
+1. **GRANT/REVOKE** — permiso de tabla a nivel de role.
+2. **RLS policies** — permiso de fila dentro de la tabla.
+
+RLS NO concede acceso por sí solo. Si no hay `GRANT` previo al role que viene en la conexión, Postgres devuelve `permission denied` antes incluso de evaluar la policy. Las migraciones 01–06 creaban tablas con owner `postgres` y habilitaban RLS, pero nunca hacían `GRANT ... TO service_role, authenticated` — y Postgres no concede privilegios automáticos a otros roles cuando la tabla la crea su owner.
+
+PostgREST (la capa REST de Supabase) recibe la apikey, mapea al role (`anon` | `authenticated` | `service_role`) y hace `SET ROLE`. Sin GRANT, falla aunque el secret key supuestamente "bypassa RLS".
+
+**Por qué `verify_migrations.py` no lo detectó:** ese script conecta como `postgres` directamente al session pooler usando el password de DB. `postgres` es owner y tiene privilegios implícitos. El gap solo aparece al cambiar al canal real de la app (apikey + REST + SET ROLE).
+
+**Regla resultante:**
+
+- **Toda nueva tabla en `public`** debe tener `GRANT ALL TO service_role, authenticated` después del `create table`. La migración `20260501000000_07_grants.sql` aplica esto a las tablas existentes y deja un `alter default privileges in schema public grant all on tables to service_role, authenticated` para que las futuras lo hereden sin tener que repetirlo por tabla.
+- `anon` NO recibe grants por defecto. La web pública entra siempre vía `/api/contact` con service_role. Si en el futuro un endpoint sirve datos públicos, GRANT explícito a `anon` sobre la tabla concreta + RLS policy compatible.
+- **Ampliar `verify_migrations.py`** con un check que use la REST API y la secret key — ese sería el chequeo que sí detecta este gap. Propuesta: añadir `check_rest_api_grants()` que haga `GET /rest/v1/<tabla>?select=id&limit=0` con `apikey: SUPABASE_SECRET_KEY` para 2-3 tablas representativas. Pendiente de añadir a la suite (anotado, no urgente).
+- Tras aplicar GRANTs nuevos, hacer `notify pgrst, 'reload schema';` para refrescar el cache de PostgREST sin esperar el polling.
+
+**Aplicado en:** `infra/supabase/migrations/20260501000000_07_grants.sql`. Aplicada a `demin-dev` y `demin-prod` el 2026-05-01. Ambos entornos verificados con `verify_migrations.py` (5/5) y smoke `curl` REST (HTTP 200 sobre `web_leads` con secret key + round-trip insert/select/delete en dev).
+
+---
+
+## 2026-05-01 — Lección 8: notificaciones tras escritura en BD — best-effort, nunca bloqueantes para la operación principal
+
+**Contexto:** en `/api/contact`, la operación crítica es persistir el lead en `web_leads`. La notificación por email a `CONTACT_NOTIFICATION_EMAIL` vía Resend es valor añadido (Gonzalo se entera al instante en lugar de descubrir el lead horas después al revisar el dashboard) pero NO es la operación crítica.
+
+Si la notificación falla por cualquier razón (timeout de Resend, dominio no verificado, `RESEND_API_KEY` ausente, error 5xx del SDK), el lead NO debe perderse. El cliente debe recibir `200 OK` como si todo hubiera ido bien — porque desde su perspectiva, sí ha ido bien (sus datos están seguros en BD).
+
+**Regla resultante:** cualquier acción "post-escritura" que sea valor añadido pero no crítica (notificaciones, webhooks, llamadas a APIs externas, indexación en motor de búsqueda, etc.) se ejecuta DESPUÉS del INSERT/UPDATE/DELETE crítico, dentro de try/catch, con doble protección:
+
+1. La función helper (`sendLeadNotification`, etc.) tiene su propio try/catch interno y NUNCA lanza — devuelve `null` y loguea con `console.error('[servicio]', error)`.
+2. La llamada desde el route handler ENVUELVE de nuevo en try/catch como cinturón-y-tirantes, por si algo escapa (errores de import, runtime errors fuera del SDK, etc.).
+3. Cualquier estado de error/warning se loguea con prefijo identificable (ej. `[resend]`, `[webhook]`) para fácil filtrado en logs.
+4. Variables de entorno requeridas para la notificación deben validarse al inicio de la función helper. Si falta cualquiera → log warning + return `null` silencioso. NO lanzar excepción. La aplicación debe funcionar aunque el operador no haya configurado todavía las credenciales del servicio de notificación.
+
+**Aplicable a futuras integraciones:** webhooks de eventos, notificaciones a Slack, envíos a sistemas analíticos, llamadas a APIs de terceros (Apollo, etc.) en los workers de Fase 1, escalado de leads a CRM externo si se añade en Fase 2.
+
+**Sub-regla — providers de email transaccional con dominio verificado:** la dirección `From` DEBE coincidir con el dominio donde la API key está autorizada. Si la key está vinculada a `demingroupmadrid.com` (raíz), enviar desde `@send.demingroupmadrid.com` devuelve `403 — API key not authorized to send emails from X`. La aparente flexibilidad de subdominios solo aplica al envelope-from y al SPF/return-path, no al header `From` visible. Revisar la pantalla "API Keys" del provider para verificar la restricción de dominio antes de configurar el remitente. Aplicado tras fallo en primer envío real desde `/api/contact`: el `CONTACT_FROM_EMAIL` pasó de `noreply@send.demingroupmadrid.com` a `noreply@demingroupmadrid.com` el 2026-05-01.
+
+**Sub-regla relacionada:** NO ejecutar `npm run build` mientras el dev server (`npm run dev`) esté corriendo en otra terminal — rompe los archivos temporales de `.next/` y deja la web con `Internal Server Error` hasta que se borra `.next/` y se reinicia. Verificar build en sesión separada o tras parar el dev. Para chequeo de tipos sin tocar `.next/`: `npx tsc --noEmit`.
+
+**Aplicado en:** `apps/web/lib/resend.ts` (helper con try/catch interno + validación de env vars con warn-and-return-null) + `apps/web/app/api/contact/route.ts` (caller, líneas 76-86, try/catch externo y siempre 200 al cliente si el INSERT en `web_leads` fue OK).
+
+---
+
 ## 2026-04-29 — Lección 9: el KB capturado en sesión 1 desvía del plan en 6 puntos — la realidad de Gonzalo manda
 
 **Contexto:** sesión de KB con Gonzalo (29 abr 2026, 32 min de entrevista efectiva).

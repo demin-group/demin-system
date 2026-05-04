@@ -1,26 +1,70 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg-primary:    #FFFFFF;
+  --bg-section:    #FAFAFA;
+  --ink-primary:   #1A1A1A;
+  --ink-secondary: #525252;
+  --brand:         #3D3D3D;
+  --border:        #E5E5E5;
+  --accent:        #B85C2C;
+  --accent-hover:  #9A4D24;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg-primary:    var(--bg-primary);
+  --color-bg-section:    var(--bg-section);
+  --color-ink-primary:   var(--ink-primary);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-brand:         var(--brand);
+  --color-border-soft:   var(--border);
+  --color-accent:        var(--accent);
+  --color-accent-hover:  var(--accent-hover);
+  --font-sans:           var(--font-geist-sans);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-primary);
+  color: var(--ink-primary);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  font-weight: 400;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.85);
+  backdrop-filter: blur(4px);
 }

@@ -41,3 +41,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Fotos sin procesar (originales WhatsApp), uso solo local
+public/uploads-raw/

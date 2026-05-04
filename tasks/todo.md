@@ -1036,6 +1036,47 @@ Plan v1 escrito tras conversación de scoping. Pendiente de validación humana a
 
 Se identificó que DEMIN no tiene web. Sin web, los prospectos que googleen al remitente del correo en frío no encuentran nada → conversion penalizada y deliverability empeorada. Solución: landing one-pager construida en Fase 0 en `apps/web/`, mismo stack que el dashboard, despliegue separado en `demingroup.es`. Coste adicional 0€. Ver §13.
 
+### 2026-05-01 — Bloque C: web pública construida (pendiente de revisión humana en local)
+
+Landing one-pager `apps/web/` montada según el spec del Bloque C. Stack: Next.js 15.5.15 (App Router, Turbopack) + Tailwind v4 + Geist Sans (`weight: 400, 600`). Sin shadcn, sin tracking de terceros, sin librerías de iconos.
+
+**Build limpio.** `npm run build` genera 10 rutas estáticas (`/`, `/aviso-legal`, `/privacidad`, `/cookies`, `/api/contact` dinámica, `/sitemap.xml`, `/robots.txt`, `_not-found`). Home: 4.04 kB + 127 kB First Load (uncompressed; queda holgadamente bajo 100 kB gzipped). `npm run lint` pasa sin warnings.
+
+**Procesado de fotos.** Las 7 fotos de `uploads-raw/` se inspeccionaron visualmente. Mapeo final a `apps/web/public/obras/`:
+
+| Origen WhatsApp | Destino | Uso |
+|---|---|---|
+| `08.22.02.jpeg` | `hero-boveda-ladrillo.jpg` | Hero |
+| `08.21.43.jpeg` | `obra-vigas-hormigon.jpg` | Galería destacada |
+| `08.22.02 (2).jpeg` | `obra-columnas-numeradas.jpg` | Galería |
+| `08.22.20.jpeg` | `obra-cables-proceso.jpg` | Galería |
+| `08.22.21.jpeg` | `obra-espacio-diafano.jpg` | Galería + sección Proceso |
+| `08.22.02 (1).jpeg` | `obra-boveda-detalle.jpg` | Galería (sustituye a `obra-acabada-ventana.jpg` que no aparecía en ninguna foto recibida) |
+| `08.21.44.jpeg` | (no se usa) | Queda en `uploads-raw/` |
+
+Logo `LOGO DEMIN GROUP.jpg` movido a `apps/web/public/logo-demin.jpg`. Como el logo viene blanco sobre gris (`--brand`), encaja directo en hero overlay y footer; en el header (fondo blanco) se renderiza wordmark de texto en Geist en lugar del bloque gris para no romper la nav.
+
+**Desviación documentada del spec §4.** No existía foto que encajara con la descripción `obra-acabada-ventana.jpg` ("espacio acabado/doméstico, puerta marrón a la derecha"). Tras consulta a Alberto, se sustituye por una segunda variante de bóveda de ladrillo con columna central marcada (`obra-boveda-detalle.jpg`). La OG image queda como copia temporal del hero (TODO pre-launch).
+
+**Backend del formulario.** `/api/contact` con runtime Node, valida payload con `zod`, honeypot `website` (200 OK silencioso), inserta en `web_leads` con service role key. Rate limit pendiente — actualmente protegido solo por validación + honeypot. Nota: la tabla `web_leads` (definida en §13.4) debe estar creada en Supabase `demin-dev` y `demin-prod` antes del primer envío.
+
+**Decisiones UX implementadas.** Hero con overlay 55%, lightbox con `<dialog>` nativo (Esc/←/→/click fuera), WhatsApp float aparece a 800 ms con color `#25D366`, cookie banner en `localStorage` (`demin-cookies-ack-v1`). Form con estados idle/submitting/success/error y mensaje de éxito que reemplaza al formulario.
+
+**TODOs pre-launch (bloquean ir a producción, no cierran Bloque C en local):**
+
+1. **NIF de Gonzalo** en `app/(legal)/aviso-legal/page.tsx` — LSSI 10.1. Hay placeholder visible y comentario HTML `TODO BLOQUEO PRE-LAUNCH`.
+2. **Alias `contacto@demingroupmadrid.com`** creado en Workspace Admin (apunta al buzón principal). El `mailto:` ya apunta al alias para que funcione automáticamente al activarlo. `CONTACT_NOTIFICATION_EMAIL` apunta a `gonzalo.perez@demingroupmadrid.com` directamente.
+3. **OG image real** (1200×630 con logo + tagline + foto). Hoy es copia simple del hero.
+4. **Tabla `web_leads` aplicada** en `demin-prod` y `demin-dev`. ✅ Aplicada en B7. **GRANTs corregidos** en migración 07 (Lección 7) — sin esto el route handler devolvía 403 vía REST API.
+5. **Envío de email del formulario NO implementado.** Spec §13.4 dice "POST a `/api/contact` → inserta en `web_leads` + dispara email de aviso a Gonzalo". Hoy solo se hace lo primero. Documentado en `apps/web/README.md` (sección "Detalle: CONTACT_NOTIFICATION_EMAIL"). Detalle del trabajo aparcado en el bloque PENDIENTE de abajo.
+
+**Cerrados durante sesión 2026-05-01:**
+
+- ✅ **Notificación de leads inbound vía Resend implementada.** Recursos completados: cuenta Resend creada, dominio `demingroupmadrid.com` verificado en region `eu-west-1`, DNS de `send.demingroupmadrid.com` apuntado a Resend, `RESEND_API_KEY` generada (en Bitwarden, item `demin-resend-api-key`). Código: `apps/web/lib/resend.ts` exporta `sendLeadNotification()`; `/api/contact/route.ts` la invoca tras INSERT exitoso en `web_leads`. Contrato cumplido: si Resend falla por cualquier motivo (timeout, 4xx, 5xx, key/destinatario ausentes, dominio no verificado) → `console.error('[resend]', ...)` y se devuelve 200 igual; el lead nunca se pierde por un fallo de notificación. Variables nuevas en `.env.example`: `RESEND_API_KEY` (queda vacía, valor real solo en `.env.local` y Vercel) y `CONTACT_FROM_EMAIL` (default `DEMIN Group <noreply@demingroupmadrid.com>`). Dependencia: `resend@^6.12.2` añadida a `apps/web/package.json`.
+- ✅ **Remitente final: dominio raíz (no subdominio).** Tras smoke test del envío real, el `CONTACT_FROM_EMAIL` definitivo es `DEMIN Group <noreply@demingroupmadrid.com>` (no `@send.demingroupmadrid.com`). Motivo: la API key de Resend está restringida al dominio raíz `demingroupmadrid.com`; enviar desde el subdominio devolvía `403 — API key not authorized to send emails from X`. La reputación de envío sigue aislada del Workspace de Gonzalo porque los DNS records de Resend (SPF/DKIM/return-path) viven en `send.demingroupmadrid.com`. Capturado como sub-regla en Lección 8.
+
+Cierre del bloque queda **pendiente de revisión humana en local** (`npm run dev` + check visual + Lighthouse mobile real). Hasta entonces, no se marcan los items de Fase 0 §14 ("Web pública") como `[x]`.
+
 ### 2026-04-29 — Cierre Bloque A
 
 - **Dominio:** `demingroupmadrid.com` (Namecheap, expira 29/04/2027, auto-renew ON).
