@@ -477,6 +477,20 @@ entrevista verbalizada tampoco era buen tono y hay que recalibrar
 
 ---
 
+## 2026-05-04 — Lección 16: antes de definir variables de configuración nuevas, leer `.env.example` y la convención que dejó la fase anterior. El código se adapta a la convención del repo, no la convención al código.
+
+**Contexto:** el prompt de Fase 1 — Sprint 1 paso 1 (cimientos `apps/workers/shared/`) especificaba 4 variables de configuración (`SUPABASE_URL_DEV`, `SUPABASE_URL_PROD`, `SUPABASE_DB_PASSWORD_DEV`, `SUPABASE_DB_PASSWORD_PROD`) en un único `.env`, con un helper que reconstruía el connection string a partir de host + password por separado. La auditoría previa a la implementación detectó que la convención ya validada en B7 era distinta: dos ficheros separados (`apps/workers/.env.dev` y `.env.prod`, ambos gitignored), cada uno con `DATABASE_URL` completa (Session pooler con password embebida, Lección 6) más `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `SUPABASE_ENV` discriminador. `apps/workers/.env.example` documenta este patrón en sus líneas 12-26.
+
+**Corrección humana:** se paró antes de implementar y se propusieron dos opciones — (A) adaptar el spec del prompt a la convención existente, (B) migrar la convención al patrón del prompt. Alberto eligió (A) explícitamente: "Opción A confirmada. Adelante con la implementación bajo la convención existente del repo".
+
+**Regla resultante:** cualquier fichero que toque configuración (`shared/config.py` especialmente, pero también helpers de `db`, `llm` o cualquier worker que lea variables) se diseña LEYENDO primero `apps/workers/.env.example` y los `.env.{ENV}` reales antes de escribir una sola línea de código. Si el spec de un prompt pide una convención distinta a la ya validada, la regla nº 9 del Apéndice A obliga a parar y proponer alternativa antes de reescribir la convención. Aplicable también a otras estructuras consolidadas: schema de BD (§6 todo.md), prompts versionados (`shared/prompts/*.md`, regla nº 8), naming de variables en frontend (Lección 15 ya lo cubre para Next.js / Vercel) y ficheros gitignored ya validados.
+
+**Por qué la regla se sostiene en el tiempo:** las convenciones de configuración se validan UNA vez (en este proyecto, durante B7) y luego cualquier worker, smoke o script confía en que esa forma se mantiene. Romperla obligaría a actualizar `verify_migrations.py`, `.env.example`, los `.env.{dev,prod}` reales en Bitwarden, y cualquier futuro prompt que asuma el patrón viejo. El coste de la migración es mayor que el de adaptar el spec entrante. La regla aplica simétricamente: si en algún momento la convención existente se demuestra mala, se documenta el cambio de forma explícita, se actualiza `.env.example` primero, y luego el código.
+
+**Aplicado en:** `apps/workers/shared/config.py` de Fase 1 — Sprint 1 paso 1. `Settings` carga `apps/workers/.env.{ENV}` según la variable de entorno `ENV` (default `"dev"`). `get_db_url(env)` devuelve la `DATABASE_URL` ya construida con prefijo `postgresql+psycopg://` (SQLAlchemy 2.0 + psycopg3 lo requiere explícito, mientras que el `.env` lo guarda como `postgresql://`). Validación cruzada al cargar: si `SUPABASE_ENV` dentro del fichero no coincide con el `env` solicitado, `ValueError`. Smoke `apps/workers/scripts/smoke_shared.py` valida los 4 pasos (config, db, llm, embed) contra `demin-dev` con la convención existente intacta.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
