@@ -27,7 +27,7 @@ Empresa de Madrid especializada en **demoliciones interiores y limpieza de espac
 Responsable: **Gonzalo Pérez**. Operación pequeña, alta especialización, valor diferencial es rapidez + limpieza + cumplimiento normativo.
 
 ### 1.2 Qué venden
-Servicios de demolición interior: desmontaje de falsos techos, tabiquería, vaciados técnicos, gestión de escombros. Proyectos típicos van de 7k€ (trabajo pequeño) a 100k€+ (proyecto grande). Sweet spot operativo: 25k-50k€.
+Servicios de demolición interior: desmontaje de falsos techos, tabiquería, vaciados técnicos, gestión de escombros. Proyectos típicos van de 7k€ (trabajo pequeño) a 100k€+ (proyecto grande). Sweet spot operativo: 5k-100k€ (validado en captura de KB con Gonzalo, sesión 1, 2026-04-29). Por encima de 100k€ se estudia caso a caso — precedente activo: caso Calle Montalbán de 230k€ en seguimiento. Ver KB documento `servicios`, sección 'Sweet spot de presupuesto'.
 
 ### 1.3 ICP (Ideal Customer Profile)
 Empresas que **coordinan obras integrales y subcontratan la fase de demolición**. Es decir:
@@ -38,7 +38,26 @@ Empresas que **coordinan obras integrales y subcontratan la fase de demolición*
 - Reformistas medianos
 - Administradores de fincas (para reformas en comunidades)
 
+**Nota de calibración tras KB sesión 1 (2026-04-29):** cuando se le pregunta
+a Gonzalo por sus mejores clientes y por su cliente ideal, menciona
+exclusivamente **constructoras**. No descarta los otros 4 perfiles, pero no
+los respalda con experiencia cerrada. El sistema sigue prospectando a los 5
+perfiles, pero los correos generados NO fingen experiencia con perfiles
+donde Gonzalo no la tiene. Ver KB documento `icp` para el detalle.
+
 **Lo que NO es ICP** (aunque pase el filtro CNAE): instaladores especialistas (climatización, fontanería, electricidad, asfaltado, conductos…). Esos son gremios al mismo nivel que DEMIN, no clientes.
+
+**Sectores y obras adicionales fuera de alcance, validados con Gonzalo en KB
+sesión 1:**
+
+- **Obras públicas** — trabas documentales, no compensa.
+- **Demoliciones de fachadas** — implican andamios, sin experiencia en
+  montaje ni contratación.
+- **Obras que requieran plantilla > 20 personas** — exceden capacidad.
+
+Estas tres exclusiones deben incorporarse al prompt
+`apps/workers/shared/prompts/classify_fit.md` cuando se construya en Fase 1
+(B-something del plan).
 
 ### 1.4 Por qué este sistema
 Hoy Gonzalo hace prospección manual: dossier + correo de apertura + 1-2 follow-ups, todo a mano, uno a uno. No escala. Este sistema automatiza el ciclo completo manteniendo la calidad de un humano: cada correo se redacta tras investigar al prospecto, con tono propio, sin que el cliente sepa que hay automatización detrás.
@@ -670,6 +689,16 @@ Worker `poll_imap.py` corre cada 5 min. Por cada respuesta nueva:
 | `fuera_oficina` | Si el OOO menciona fecha de regreso, reprogramar siguiente toque a fecha+5d. Si no, +7d. | No |
 | **Opt-out explícito** (flag, transversal) | `contacts.is_optout=true`. Excluir permanentemente. Enviar acuse "Te quitamos de la lista. Disculpa las molestias." | Sí, log |
 
+**Calibración tras KB sesión 1 (2026-04-29):** la tabla de arriba asume
+que las objeciones de tipo `pide_info` se responden con dossier adaptado +
+HITL. La realidad capturada en sesión 1 con Gonzalo es que solo 2 de 9
+objeciones clásicas tienen respuesta validada por él. Las otras 7 escalan
+a Gonzalo en seco hasta nuevo aviso. Esto significa que la cola de respuestas
+en v1 será mayoritariamente HITL (~80%, no el ~30% implícito en la tabla).
+Ver KB documento `objeciones`, archivo `tasks/kb_objeciones_v1.json`, y
+lección 10 en `tasks/lessons.md`. La regla operativa es no rellenar gaps
+con respuestas inventadas — escalar es el comportamiento correcto.
+
 ### 11.3 Detección de opt-out
 
 El clasificador devuelve `is_explicit_optout: true` si detecta:
@@ -750,6 +779,26 @@ Supabase Auth con magic link. Lista blanca de emails (Gonzalo + colaborador). Si
 ## 13. Sitio web público de DEMIN
 
 DEMIN no tiene web. **Esto es un bloqueador para outreach** por dos razones: prospectos serios googlean al remitente antes de responder; un dominio sin web puntúa peor en filtros de spam de Gmail. Por eso construimos una landing one-pager en Fase 0, en paralelo al setup de infra y al warmup de buzones — para cuando arranquen los envíos en Fase 2, la web ya esté indexada y caché por Google.
+
+**Nota tras KB sesión 1 (2026-04-29) — tensión a resolver con Gonzalo:**
+
+El dossier comercial actual (página 2) afirma "años de experiencia en el
+sector". La realidad operativa que Gonzalo verbalizó en KB sesión 1 es
+que la empresa arranca en 2020 pero su operación independiente como
+autónomo arranca en 2024 (≈2 años efectivos, con parones). El KB
+(`tono`, `diferenciador`) capitaliza esta juventud como activo, no como
+problema, alineado con la frase real del cliente que cerró: "la confianza
+que veía en un chico joven lanzándose".
+
+**Decisión humana pendiente:** alinear el dossier comercial con la
+realidad temporal capturada en el KB, o ajustar el KB. Recomendación
+del humano que validó la sesión 1 (Alberto): actualizar el dossier,
+porque el KB tiene que reflejar la realidad que alimenta los correos.
+
+**Implicación para la web pública (Bloque C):** la web NO debe afirmar
+"años de experiencia" mientras la decisión esté pendiente. Posiciona
+DEMIN como operación dirigida directamente por su responsable, con
+trato cercano, sin cifras de antigüedad.
 
 ### 13.1 Alcance (MVP, no proyecto de diseño)
 
@@ -904,12 +953,24 @@ Definidos al final de cada fase (§14).
 
 ### 15.2 En producción (objetivo v1)
 
-- Reuniones cerradas: **≥3-5/mes** en régimen autónomo
+- Reuniones cerradas: **maximizar sin techo**. Decisión humana
+  (2026-04-29): el sistema persigue todas las reuniones que pueda
+  cerrar; la capacidad operativa de obra (≈3 obras/mes según Gonzalo)
+  es restricción aguas abajo gestionada por él (rechazar, posponer,
+  subcontratar parcialmente, crecer en plantilla), no por el sistema.
+  El sistema NO modula caps de envío, cadencias ni ángulos en función
+  de obras absorbidas/mes.
 - Reply rate global: ≥5% (benchmark sector cold B2B sin personalización: 1-2%; con personalización profunda: 5-15%)
 - Bounce rate: <2% sostenido
 - Spam complaints: <0.1% sostenido
 - Coste total mensual operativo: <130€
-- Tiempo humano de Gonzalo: <30 min/día
+- Tiempo humano de Gonzalo: <60 min/día (calibrado tras KB sesión 1).
+  Razón del ajuste: con HITL amplio permanente en cola de respuestas
+  (~80% de respuestas requieren aprobación), el listón original de
+  <30 min/día no es realista en v1. Si en producción el tiempo
+  sostenido excede 60 min/día, evaluar si el HITL puede relajarse
+  selectivamente para tipos de respuesta donde Gonzalo ya tenga
+  ejemplos suficientes del tono real.
 
 ---
 
@@ -985,6 +1046,37 @@ Se identificó que DEMIN no tiene web. Sin web, los prospectos que googleen al r
 - **Lemwarm Essential** 29€/mes activado, warmup arrancado el 2026-04-29.
 - **Decisiones operativas Bloque A** ya capturadas en `tasks/lessons.md` Lección 4: 1 buzón + warm standby día 14, cadencia D+0/D+12/D+30, caps 10 → +5/sem → 40, Postmaster Tools como monitor oficial.
 - **TODO conocido pre-Fase 2:** `docs/dossier_demin.pdf` referencia el dominio antiguo (`demolicionesdemingroup.com`) y el gmail antiguo (`demin.groupmadrid@gmail.com`). Bloqueante de inicio de cadencia: regenerar el dossier con la identidad nueva antes de Fase 2.
+
+### 2026-04-29 — KB sesión 1 cargada y plan calibrado
+
+Cargados 6 documentos del KB inicial (servicios, icp, objeciones,
+casos_exito, tono, diferenciador) en `kb_documents` de Supabase. Embedding
+diferido a Fase 1: `kb_chunks` queda vacío hasta que se construya el worker
+`apps/workers/kb/embed_documents.py` en Fase 1. Cuando se implemente, el
+worker procesa todas las filas en `kb_documents` que no tengan chunks
+asociados — la carga de hoy queda lista para iterar. Doc 7
+(`correos_gonzalo`) en standby permanente (depende de aporte espontáneo
+de Gonzalo).
+
+Ediciones derivadas aplicadas a este documento: §1.2 (sweet spot 5k-100k),
+§1.3 (calibración ICP + sectores excluidos), §11.2 (HITL amplio
+permanente), §15.2 (maximizar reuniones sin techo, <60 min/día), §13
+(tensión "años de experiencia" vs. realidad temporal).
+
+Decisión operativa registrada: NO habrá 2ª ronda de captura con Gonzalo.
+KB v1 cierra con material de sesión 1. Gaps documentados en
+`tasks/gaps_conocidos_kb_v1.md` para trazabilidad y por si en algún
+momento Gonzalo aporta material por iniciativa propia, pero NO son un
+to-do activo del proyecto.
+
+Nuevas lecciones en `tasks/lessons.md`: 9 (KB manda sobre plan en
+divergencias) y 10 (no rellenar gaps con respuestas inventadas).
+
+Material de soporte añadido al repo: `tasks/gaps_conocidos_kb_v1.md`,
+`tasks/kb_objeciones_v1.json`. Pendiente para Fase 1: implementar
+`apps/workers/kb/embed_documents.py` (cliente Voyage `voyage-multilingual-2`,
+chunking ~500 tokens overlap 50, idempotente — ver Lección 3 para selección
+de modelo y plan §7.2 para pipeline).
 
 ---
 

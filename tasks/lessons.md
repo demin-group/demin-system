@@ -141,6 +141,139 @@ Las referencias en plantillas, prompts y firma deben usar **`gonzalo.perez@demin
 
 ---
 
+## 2026-04-29 — Lección 9: el KB capturado en sesión 1 desvía del plan en 6 puntos — la realidad de Gonzalo manda
+
+**Contexto:** sesión de KB con Gonzalo (29 abr 2026, 32 min de entrevista efectiva).
+Tras procesar la transcripción y construir los 6 documentos del KB inicial, se han
+detectado seis puntos en los que el plan §1, §11, §13 y §15 contienen supuestos
+que no se sostienen contra la realidad operativa que Gonzalo verbalizó. La regla
+del proyecto es clara: **el KB refleja la realidad de DEMIN, no el supuesto del
+plan**. Cuando hay conflicto, se actualiza el plan, no el KB.
+
+**Desviaciones detectadas y resueltas en el KB:**
+
+1. **Sweet spot de presupuesto**. Plan §1.2: 25k-50k€. Realidad de Gonzalo: 5k€
+   compensa y hasta 100k€ es cómodo. Por encima de 100k€ "habría que estudiarlo"
+   (con flexibilidad confirmada — caso Montalbán de 230k€ en seguimiento activo).
+   El KB recoge 5k-100k€ como rango operativo.
+
+2. **ICP — perfiles respaldados por experiencia**. Plan §1.3: 5 perfiles
+   (constructoras, promotoras, arquitectos que ejecutan, reformistas medianos,
+   administradores de fincas). Realidad: cuando se le pregunta a Gonzalo por sus
+   mejores clientes y su cliente ideal, **menciona solo constructoras**. No
+   descarta los demás, pero no los respalda. El KB es honesto sobre esto. El
+   sistema puede seguir prospectando a los 5 perfiles en Fase 1, pero los correos
+   no fingen experiencia con perfiles donde no la hay.
+
+3. **Sectores excluidos**. Plan §1.3 solo veta instaladores especialistas como
+   out-of-ICP. Gonzalo añade tres exclusiones por política propia: obras
+   públicas (trabas documentales), demoliciones de fachadas (no monta
+   andamios), obras que requieran plantilla > 20 personas. El KB lo recoge en
+   `servicios` y `icp`. El prompt `classify_descr.md` debe incorporar estas
+   tres exclusiones cuando se construya en Fase 1.
+
+4. **Capacidad operativa NO es restricción del embudo**. Plan §15.2 implica que
+   el objetivo "≥3-5 reuniones cerradas/mes" alinea con la capacidad operativa
+   de obra (3 obras/mes según Gonzalo). Decisión actualizada del usuario:
+   **el sistema persigue maximizar reuniones cerradas, sin techo**. La
+   capacidad operativa de obra es restricción aguas abajo gestionada por
+   Gonzalo (rechazar, posponer, subcontratar parcialmente, crecer en plantilla),
+   nunca por el sistema. El sistema no modula caps de envío, cadencias ni
+   ángulos en función de obras absorbidas/mes.
+
+5. **Empresa joven vs. dossier "años de experiencia"**. El dossier comercial
+   (página 2) afirma "años de experiencia en el sector". La realidad según
+   Gonzalo: empresa creada en 2020, él como autónomo desde 2024 — ~2 años de
+   actividad real con su propia operación, con parones. El KB (`tono` y
+   `diferenciador`) capitaliza esta juventud como activo, en línea con la
+   frase real del cliente que cerró: "la confianza que veía en un chico joven
+   lanzándose". **Tensión a resolver con Gonzalo**: o se actualiza el dossier
+   para alinearse con el KB, o se ajusta el KB. Mi recomendación es lo primero:
+   el dossier es texto cerrado y reescribible; el KB tiene que reflejar la
+   realidad operativa. Pendiente de decisión humana.
+
+6. **Objetivo de tiempo de Gonzalo en Fase 3 autónoma**. Plan §15.2:
+   "<30 min/día". Realidad operativa con HITL amplio permanente: ~60
+   min/día. El sistema persigue maximizar reuniones cerradas, no minimizar
+   tiempo de Gonzalo. La métrica §15.2 se ajusta cuando se actualice el plan.
+
+**Reglas resultantes (aplicables en sesiones futuras y al construir Fases 1-3):**
+
+- **Cuando el plan y el KB diverjan, manda el KB**, salvo que la divergencia
+  introduzca un riesgo (legal, operativo, de coste) que el KB no haya considerado.
+  En ese caso: parar y preguntar a humano.
+- **Antes de construir un prompt o un worker**, contrastar contra el KB
+  capturado en sesiones de entrevista, no solo contra `todo.md`. Si el KB
+  contradice el plan, aplicar el KB y registrar la desviación.
+- **El KB es la fuente de verdad de la realidad de DEMIN**. El plan es la
+  fuente de verdad de la arquitectura técnica. Son capas distintas. El plan
+  debe actualizarse cuando el KB revele realidad contradictoria.
+
+**Aplicado en:** los 6 documentos del KB inicial generados el 2026-04-29
+(servicios, icp, objeciones, casos_exito, tono, diferenciador). Documento 7
+(correos_gonzalo) en standby permanente hasta que Gonzalo aporte material por
+iniciativa propia.
+
+**Acciones derivadas pendientes:**
+
+- Actualizar `tasks/todo.md` §1.2, §1.3, §11.2, §15.2, §13 y log §19 con las
+  seis desviaciones de arriba — al cerrar la carga de KB en sesión específica
+  (paso 8 del prompt `claude_code_prompt_kb_carga.md`).
+- **Decisión operativa del humano (2026-04-29):** NO habrá 2ª ronda de captura
+  con Gonzalo. El KB v1 se cierra con el material de la sesión 1. Los gaps
+  quedan documentados en `tasks/gaps_conocidos_kb_v1.md` para trazabilidad y
+  por si en algún momento Gonzalo aporta material por iniciativa propia, pero
+  NO son un to-do activo.
+- Decisión humana sobre dossier comercial vs. línea editorial del KB
+  (punto 5 de las desviaciones).
+
+---
+
+## 2026-04-29 — Lección 10: la cola de respuestas en v1 será mayoritariamente HITL — es la consecuencia honesta de tener objeciones poco trabajadas
+
+**Contexto:** al construir el JSON estructurado de objeciones para
+`classify_replies.py` (Fase 3), se observa que solo 2 de 9 objeciones
+clásicas tienen respuesta validada por Gonzalo (precio y presupuesto sin
+visita). Las otras 7 quedan sin respuesta tipo. La tentación pereza-comercial
+sería rellenar los huecos con respuestas plausibles inventadas por el LLM
+basándose en el resto del KB.
+
+**Decisión:** **NO se rellenan**. Las 7 objeciones sin respuesta validada se
+marcan en el JSON como `tiene_respuesta_validada: false` con
+`accion_sistema: "escalar_a_gonzalo"` o equivalente. Esto significa que en la
+Fase 3 inicial, ~80% de la cola de respuestas pasará por HITL en lugar del
+~30% que sugiere el plan §11.2.
+
+**Por qué la regla:**
+
+- **Apéndice A regla nº 3**: "Nunca inventes datos del prospecto. Si el
+  research no lo dice, no lo digas." Aplicable también al revés: si Gonzalo
+  no dijo cómo responde a una objeción, el sistema no la inventa.
+- **Apéndice A regla nº 4**: "Nunca prometas plazos, precios o disponibilidad
+  en nombre de DEMIN." Una respuesta inventada a "no sé si encajáis con
+  nuestro tamaño" puede contener implícitamente compromisos no validados.
+- **Coste de error operativo**: una respuesta automática mal calibrada en
+  frío es indistinguible de spam corporativo. Mejor escalar de más que
+  generar fricción que queme la deliverability del dominio.
+
+**Regla resultante:** cuando el material capturado del humano sea
+insuficiente para responder con criterio, el sistema escala. NO improvisa
+para "rellenar" el flujo automático. La carga de HITL es una métrica que
+baja cuando se hacen sesiones de captura adicionales con Gonzalo, no
+cuando el LLM redacta más confiado.
+
+**Aplicado en:** JSON estructurado de objeciones (`tasks/kb_objeciones_v1.json`)
+generado el 2026-04-29. Implementación en
+`apps/workers/replies/classify_replies.py` y `handle_actions.py` cuando se
+construya Fase 3.
+
+**Métrica a vigilar:** porcentaje de respuestas escaladas a HITL en las
+primeras 4 semanas de Fase 3. Si sigue por encima del 60% de forma
+sostenida, NO relajar la regla — escalar es el comportamiento correcto
+cuando no hay material validado.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>

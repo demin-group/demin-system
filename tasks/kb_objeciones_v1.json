@@ -1,0 +1,247 @@
+{
+  "version": "1.0",
+  "ultima_actualizacion": "2026-04-29",
+  "fuente": "Entrevista KB con Gonzalo Pérez, sesión 1 (29 abr 2026)",
+  "modelo_recomendado": "claude-haiku-4-5",
+  "objeciones": [
+    {
+      "id": "obj_precio_caro",
+      "etiqueta": "Me parece caro",
+      "frases_gatillo": [
+        "me parece caro",
+        "es caro",
+        "está fuera de presupuesto",
+        "no nos cuadra el precio",
+        "el precio no nos encaja",
+        "es más de lo que esperábamos",
+        "buscamos algo más económico",
+        "tenéis precios altos"
+      ],
+      "categoria_sistema": "pide_info",
+      "tiene_respuesta_validada": true,
+      "respuesta_base": "Pedir al prospecto que comparta presupuesto previo de otra empresa para igualar/bajar precio. Si los precios son parecidos, dar explicación matizando accesos, plazos o alcance. Como alternativa, ofrecer 15% de descuento en próxima obra como gancho de fidelización. Sin tope de presupuesto: aplica también a obras grandes.",
+      "accion_sistema": "generar_borrador_y_escalar_hitl",
+      "puede_responder_autonomo": false,
+      "razonamiento_clasificacion": "Objeción de precio explícita. Respuesta validada por Gonzalo. En v1 escala a HITL hasta validar suficientes ejemplos del tono real."
+    },
+    {
+      "id": "obj_no_ahora_amable",
+      "etiqueta": "Perfecto, nos apuntamos vuestro contacto",
+      "frases_gatillo": [
+        "nos apuntamos vuestro contacto",
+        "guardamos vuestros datos",
+        "os tendremos en cuenta",
+        "para futuras demoliciones",
+        "para futuros proyectos",
+        "cuando nos surja algo",
+        "ya os contactaremos",
+        "lo tendremos presente"
+      ],
+      "categoria_sistema": "no_ahora",
+      "tiene_respuesta_validada": false,
+      "respuesta_base": null,
+      "accion_sistema": "detener_secuencia_y_reengage_60",
+      "puede_responder_autonomo": false,
+      "razonamiento_clasificacion": "Objeción más frecuente según Gonzalo. Filosofía: 'no aceptar el no, intentar lucharlo para rascarle algo'. Pero cómo lucharlo concretamente NO está validado. Se trata como no_ahora (re-engage +60d), NO como respuesta directa."
+    },
+    {
+      "id": "obj_proveedor_existente",
+      "etiqueta": "Ya tenemos a alguien de confianza",
+      "frases_gatillo": [
+        "ya tenemos proveedor",
+        "ya trabajamos con",
+        "tenemos a alguien de confianza",
+        "ya colaboramos con una empresa",
+        "estamos contentos con nuestro proveedor actual",
+        "tenemos cubierto el servicio"
+      ],
+      "categoria_sistema": "no_ahora",
+      "tiene_respuesta_validada": false,
+      "respuesta_base": null,
+      "accion_sistema": "escalar_a_gonzalo",
+      "puede_responder_autonomo": false,
+      "razonamiento_clasificacion": "Objeción clásica B2B. Gonzalo NO la trabajó en la entrevista. Posiblemente aplicable la táctica de match price + 15% para entrar como segundo proveedor, pero NO validado. Escalar."
+    },
+    {
+      "id": "obj_mandar_info",
+      "etiqueta": "Mándame info y te llamo",
+      "frases_gatillo": [
+        "mándame información",
+        "envíame info",
+        "pásame el dossier",
+        "mándame algún material",
+        "envíanos referencias",
+        "yo te llamo cuando lo vea",
+        "ya os digo algo"
+      ],
+      "categoria_sistema": "pide_info",
+      "tiene_respuesta_validada": false,
+      "respuesta_base": null,
+      "accion_sistema": "escalar_a_gonzalo",
+      "puede_responder_autonomo": false,
+      "razonamiento_clasificacion": "Petición de información estructurada. El plan §11.2 dice 'generar respuesta automática con dossier adaptado, requiere aprobación HITL'. Gonzalo no validó respuesta tipo. Escalar para que él decida si manda dossier, llama directamente, o propone visita."
+    },
+    {
+      "id": "obj_tamano_obra",
+      "etiqueta": "No sé si encajáis con nuestro tamaño de obra",
+      "frases_gatillo": [
+        "no sé si encajáis",
+        "nuestras obras son más grandes",
+        "nuestros proyectos son distintos",
+        "no sé si tenéis capacidad",
+        "manejamos volúmenes muy altos",
+        "no sé si os queda grande"
+      ],
+      "categoria_sistema": "pide_info",
+      "tiene_respuesta_validada": false,
+      "respuesta_base": null,
+      "accion_sistema": "escalar_a_gonzalo",
+      "puede_responder_autonomo": false,
+      "razonamiento_clasificacion": "Objeción ambigua: puede significar 'sois muy pequeños' o 'sois muy grandes para lo que necesitamos'. Sin contexto, escalar. Gonzalo tiene material objetivo para responder (1-8 personas según obra, sweet spot 5k-100k) pero no validó frase tipo."
+    },
+    {
+      "id": "obj_consultar_equipo",
+      "etiqueta": "Tenemos que pensarlo en el equipo",
+      "frases_gatillo": [
+        "tenemos que pensarlo",
+        "lo consulto con el equipo",
+        "lo valoramos internamente",
+        "lo hablamos en la próxima reunión",
+        "necesito comentarlo con dirección",
+        "déjame consultarlo"
+      ],
+      "categoria_sistema": "no_ahora",
+      "tiene_respuesta_validada": false,
+      "respuesta_base": null,
+      "accion_sistema": "detener_secuencia_y_reengage_60",
+      "puede_responder_autonomo": false,
+      "razonamiento_clasificacion": "Aparcamiento por consulta interna. Tratamiento idéntico al no_ahora amable: re-engage +60d. Gonzalo no validó respuesta de seguimiento concreta."
+    },
+    {
+      "id": "obj_albaniles_internos",
+      "etiqueta": "Las demoliciones pequeñas las hacen nuestros albañiles",
+      "frases_gatillo": [
+        "lo hacen nuestros albañiles",
+        "lo resolvemos internamente",
+        "nuestro equipo se encarga",
+        "no necesitamos subcontratar demolición",
+        "lo cubre nuestra propia plantilla"
+      ],
+      "categoria_sistema": "no_interesado",
+      "tiene_respuesta_validada": false,
+      "respuesta_base": null,
+      "accion_sistema": "detener_secuencia_y_reengage_90",
+      "puede_responder_autonomo": false,
+      "razonamiento_clasificacion": "Decisión estructural del cliente: prefiere ejecución interna. Tratamiento como no_interesado, re-engage +90d (su modelo puede cambiar). Gonzalo no validó respuesta. Ángulo posible: 'cuando os surja una obra grande donde los albañiles se queden cortos en plazo'."
+    },
+    {
+      "id": "obj_referencias",
+      "etiqueta": "No conocemos vuestro trabajo, ¿podéis darnos referencias?",
+      "frases_gatillo": [
+        "podéis darnos referencias",
+        "tenéis casos de éxito",
+        "no os conocemos",
+        "no nos suena vuestra empresa",
+        "queremos ver obras anteriores",
+        "necesitamos garantías"
+      ],
+      "categoria_sistema": "pide_info",
+      "tiene_respuesta_validada": false,
+      "respuesta_base": null,
+      "accion_sistema": "escalar_a_gonzalo",
+      "puede_responder_autonomo": false,
+      "razonamiento_clasificacion": "Petición legítima de validación. Hay material objetivo en KB (casos La Gasca, Av. Toreros, Calle Farmacia, Padre Damián cuando se cierre) PERO sin permiso explícito de Gonzalo para citar identificación pública. Escalar para que Gonzalo decida qué referencias mandar y bajo qué nivel de identificación."
+    },
+    {
+      "id": "obj_presupuesto_sin_visita",
+      "etiqueta": "Mándame presupuesto sin haber visto la obra",
+      "frases_gatillo": [
+        "mándame presupuesto",
+        "pásame un precio orientativo",
+        "necesitamos cifras para licitar",
+        "estamos en fase de licitación",
+        "tenemos que presupuestar rápido"
+      ],
+      "categoria_sistema": "pide_info",
+      "tiene_respuesta_validada": true,
+      "respuesta_base": "Pedir al prospecto que comparta: (1) mediciones detalladas si las tienen, (2) si no hay mediciones al 100%, fotos documentadas con explicación zona por zona de lo que hay que hacer. Con eso Gonzalo presupuesta a ciegas. Si no hay ninguna de las dos, propone visita rápida al sitio.",
+      "accion_sistema": "generar_borrador_y_escalar_hitl",
+      "puede_responder_autonomo": false,
+      "razonamiento_clasificacion": "Procedimiento operativo claro de Gonzalo (entrevista [46:17]). El borrador genera respuesta con las dos vías. HITL en v1 porque cualquier cifra de presupuesto que se mencione debe pasarla Gonzalo (regla nº 4 del Apéndice A)."
+    }
+  ],
+  "categorias_no_objecion": {
+    "interesado": {
+      "frases_gatillo": [
+        "me interesa",
+        "cuándo podemos hablar",
+        "estamos interesados",
+        "queremos avanzar",
+        "concertamos una llamada",
+        "envíame disponibilidad",
+        "mándame el alcance",
+        "vamos a por ello"
+      ],
+      "categoria_sistema": "interesado",
+      "accion_sistema": "detener_secuencia_y_escalar_urgente",
+      "razonamiento_clasificacion": "Respuesta positiva clara. Notificación urgente a Gonzalo. Generar borrador de respuesta sugerida con propuesta de llamada inmediata."
+    },
+    "rebote": {
+      "frases_gatillo": [
+        "mailer-daemon",
+        "mail delivery failed",
+        "address not found",
+        "delivery status notification",
+        "could not be delivered",
+        "user unknown"
+      ],
+      "categoria_sistema": "rebote",
+      "accion_sistema": "marcar_email_invalido_buscar_alternativa",
+      "razonamiento_clasificacion": "Bounce técnico. Marcar email_verified=false, intentar email alternativo si existe en companies."
+    },
+    "fuera_oficina": {
+      "frases_gatillo": [
+        "out of office",
+        "fuera de la oficina",
+        "estaré ausente",
+        "vacaciones",
+        "respuesta automática",
+        "regreso el",
+        "auto-reply"
+      ],
+      "categoria_sistema": "fuera_oficina",
+      "accion_sistema": "reprogramar_siguiente_toque",
+      "razonamiento_clasificacion": "Auto-respuesta de OOO. Si menciona fecha de regreso, reprogramar siguiente toque a fecha+5d. Si no, +7d."
+    }
+  },
+  "opt_out_explicito": {
+    "frases_gatillo": [
+      "no me escribáis más",
+      "no quiero recibir más correos",
+      "quitadme de la lista",
+      "borrad mis datos",
+      "stop",
+      "unsubscribe",
+      "RGPD",
+      "GDPR",
+      "LSSI",
+      "AEPD",
+      "denuncia",
+      "derechos ARCO",
+      "ejercicio de derechos",
+      "dejad de escribirme"
+    ],
+    "accion_sistema": "marcar_optout_permanente_y_acuse",
+    "razonamiento_clasificacion": "Petición explícita de cese. Acción permanente (contacts.is_optout=true). Enviar acuse breve: 'Te quitamos de la lista. Disculpa las molestias.' Sin reintentos, sin re-engage. Notificación a Gonzalo en log."
+  },
+  "tabla_acciones": {
+    "generar_borrador_y_escalar_hitl": "Detener secuencia. Generar borrador de respuesta usando respuesta_base. Marcar como pendiente_aprobacion en cola de replies. NO enviar hasta que Gonzalo apruebe.",
+    "escalar_a_gonzalo": "Detener secuencia. Marcar como escalado en cola de replies. NO generar borrador (Gonzalo decide desde cero).",
+    "detener_secuencia_y_reengage_60": "Detener secuencia. Programar re-engage a +60 días con ángulo re_engage_60. Sin notificación.",
+    "detener_secuencia_y_reengage_90": "Detener secuencia. Programar re-engage a +90 días con ángulo re_engage_90. Sin notificación.",
+    "detener_secuencia_y_escalar_urgente": "Detener secuencia. Notificación urgente a Gonzalo. Generar borrador de respuesta sugerida.",
+    "marcar_email_invalido_buscar_alternativa": "Marcar contacts.email_verified=false. Buscar email alternativo en companies. Si no hay, pasar a estado descartado.",
+    "reprogramar_siguiente_toque": "Mantener secuencia activa. Reprogramar siguiente step a fecha de regreso + 5d (o +7d si no se detecta fecha).",
+    "marcar_optout_permanente_y_acuse": "contacts.is_optout=true, contacts.optout_at=now(), contacts.optout_reason=texto_detectado. Enviar acuse de recibo único. Excluir permanentemente."
+  }
+}
