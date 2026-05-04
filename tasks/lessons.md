@@ -491,6 +491,31 @@ entrevista verbalizada tampoco era buen tono y hay que recalibrar
 
 ---
 
+## 2026-05-04 — Lección 17: el criterio de validación de un smoke se diseña leyendo el contenido real, no a priori. Si el criterio falla y el contenido es útil, el criterio era el problema.
+
+**Contexto:** primer smoke retrieval del KB en Sprint 1 paso 2. El criterio que dicté al diseñarlo fue "top-1 chunk debe pertenecer a una categoría coherente", con un set de categorías esperadas por query (`expected_cats`) escogidas a priori sin leer los 6 documentos del KB cargados en sesiones 1+2 con Gonzalo. Resultado: VEREDICTO AMARILLO con 0/3 top-1 dentro del set esperado. Inspeccionando los chunks devueltos, eran semánticamente útiles para responder cada query — el RAG funcionaba bien; la categoría no era el indicador correcto. Los 6 docs del KB se solapan temáticamente: el doc `casos_exito` cubre m² y plazos, el doc `diferenciador` cubre tamaño de cliente, el doc `servicios` cubre coordinación con gremios. Ningún top-1 cae limpiamente en una sola categoría porque la realidad del KB no está particionada por categorías sino por temas transversales.
+
+**Corrección humana:** Alberto asumió que el criterio era estrecho y autoría suya, no fallo del RAG. Pidió rediseñar el criterio leyendo qué contienen los 6 docs y construyendo signals desde ese material, no desde la intuición.
+
+**Regla resultante:** cuando se escriba un smoke o un test de validación que evalúa output semántico (retrieval, clasificación, redacción), el criterio se diseña en dos fases:
+
+1. **Fase de lectura del material real.** Antes de escribir una sola línea del criterio, leer los datos contra los que se va a validar — sea KB, fixtures, ground truth, o la realidad operativa que el sistema modela. El criterio se escribe **a posteriori** del material, no a priori.
+2. **Fase de diseño del criterio.** El criterio mide la **utilidad** del output para responder al caso de uso real (en RAG: ¿este chunk ayuda al LLM a redactar una respuesta correcta?), no la coincidencia con una etiqueta arbitraria. Mecánicas concretas:
+   - **Signals contextuales** (palabras-clave/cifras/términos que cualquier respuesta útil contendría) en lugar de etiquetas categóricas.
+   - **Salida auditable**: el smoke debe imprimir preview suficiente del output (~400 chars) + qué signals matchearon, para que un humano pueda validar sin abrir la BD ni el sistema bajo test.
+   - **Veredicto cuantitativo + apertura humana**: VERDE/AMARILLO/ROJO con condiciones explícitas (ej. ≥N signals en top-K), pero el log debe permitir al humano cuestionar el veredicto leyendo las trazas.
+
+**Por qué esto no es "tunear el test al resultado":** la diferencia es de qué fuente bebe el criterio. Tunear sería ajustar el threshold para que pase justo este caso. Lo correcto es derivar el threshold del material real una vez, antes de cualquier ejecución, y mantenerlo estable. En este Sprint, los signals por query se escribieron leyendo los 6 docs (no leyendo los outputs del run anterior), y el threshold ≥2 se fijó como mínimo razonable; los runs posteriores podrían fallar y el criterio seguiría intacto.
+
+**Cuándo aplica esta lección además del smoke retrieval:**
+- Validación post-generación de correos en Fase 2 (`generate_draft.py` debe rechazar borradores que NO contengan ciertos signals derivados del KB del prospecto, no que coincidan con una plantilla a priori).
+- Clasificación de respuestas en Fase 3 (`classify_replies.py` validar contra frases gatillo reales del campo, no contra categorías intuidas — `tasks/kb_objeciones_v1.json` ya sigue este patrón con las 7 frases gatillo de respuestas reales).
+- Cualquier test de retrieval que se añada en Fase 4+ con datos reales de prospectos.
+
+**Aplicado en:** `apps/workers/scripts/smoke_kb_retrieval.py` de Fase 1 — Sprint 1 paso 2. Criterio rediseñado tras leer los 6 docs cargados en `kb_documents` (servicios, ICP, objeciones, casos_éxito, tono, diferenciador). Cada query expone `signals: list[str]` (lowercased, sin acentos, prefijos para tolerar variaciones tipo `peque` → pequeña/pequeñas/pequeño) derivados del contenido real. Veredicto: VERDE con 3/3 top-1 superando threshold ≥2 signals; distancias 0.64–0.71. Pivot técnico complementario aplicado en mismo paso: `shared.llm.embed()` añade parámetro `input_type: Literal["document","query"]` para usar embeddings asimétricos del SDK Voyage (ver Lección 16 + ajuste asociado en commit del paso).
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
