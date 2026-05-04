@@ -428,9 +428,9 @@ Cuando se va a redactar un correo, el sistema:
 
 ### 8.1 Ingesta del Excel de Sabi
 
-- El Excel `SABI_Export_1__1_.xlsx` ya está analizado: hoja `Resultados`, header en fila 1, 5.619 filas, 19 columnas (ver §6.1 estructura `companies` para mapping).
-- Worker `ingest_sabi.py`: lee el Excel, mapea columnas, normaliza `n.d.` → NULL, calcula `rev_growth_pct`, calcula `tier` por reglas (ver §8.2).
-- Idempotente por `nif` (upsert).
+- El Excel `docs/sabi_export.xlsx` ya está analizado: hoja `Resultados`, header en fila 1, **5.619 filas brutas → 5.578 NIFs únicos tras dedup** (ver Lección 18: SABI exporta cuentas consolidadas + individuales para 41 empresas grandes; deduplicación por "tier más alto gana"), 19 columnas (ver §6.1 estructura `companies` para mapping).
+- Worker `ingest_sabi.py`: lee el Excel, valida cabeceras esperadas, normaliza `n.d.` → NULL, calcula `rev_growth_pct`, asigna `tier` por reglas (ver §8.2), deduplica por NIF.
+- Idempotente por `nif` (UPSERT). Conserva `ia_fit`, `ia_fit_reason`, `research_done_at`, `research_data` en re-ejecuciones.
 
 ### 8.2 Reglas de tier (ya validadas)
 

@@ -516,6 +516,26 @@ entrevista verbalizada tampoco era buen tono y hay que recalibrar
 
 ---
 
+## 2026-05-04 — Lección 18: SABI exporta cuentas consolidadas + individuales para algunas empresas; deduplicar por "tier más alto gana"
+
+**Contexto:** primera ingesta del Excel `docs/sabi_export.xlsx` durante Sprint 2 paso 1 (ingest_sabi). El plan §6.1 declara `nif unique not null` en `companies`. Auditoría previa a la implementación detectó **41 NIFs duplicados** en las 5.619 filas brutas (5.578 únicos). Los 41 son siempre exactamente 2 ocurrencias y la misma empresa aparece con cifras radicalmente distintas en cada fila — ej. ACCIONA SA: 19.190M€ vs 489M€; FERROVIAL INVERSIONES: 3.635M€ vs 1.17M€. Hipótesis: SABI exporta cuentas consolidadas (grupo) + cuentas individuales (filial operativa) para empresas que han presentado ambos tipos de depósito contable.
+
+**Decisión humana (2026-05-04):** Opción A confirmada — heurística "tier más alto gana, empate → primera ocurrencia". La cifra individual de filial pesa más que la consolidada del grupo para un B2B local como DEMIN: la filial es la entidad que decide y firma una contratación de obra; la consolidada es contabilidad agregada del grupo y normalmente cae fuera de rango (>20M€) por tamaño total acumulado.
+
+**Regla resultante:**
+
+- **Cuando un export externo declarado `unique` no lo es**, parar antes de tocar BD y diagnosticar el patrón: número de duplicados, si son filas idénticas (deduplicación trivial) o filas distintas (decisión sensible), e impacto sobre la salida del worker (en este caso: ¿cuántos duplicados afectan al tier final?).
+- **Deduplicar con criterio operativo, no técnico**. "Quedarse con la primera fila" o "última fila" son criterios técnicos arbitrarios; "tier más alto gana" deriva del objetivo del worker (encontrar empresas accionables) y produce salidas explicables.
+- **Documentar la decisión en código** con función dedicada (`dedup_by_nif()`) que devuelva trazabilidad de las decisiones tomadas (qué tier conservó vs cuál descartó por NIF) — útil para auditar después si Gonzalo pregunta por una empresa concreta.
+- **Idempotencia y heurística determinista van juntas**: la heurística debe ser estable entre ejecuciones (mismo Excel → misma salida). Si la heurística usa orden de aparición como tiebreaker, el orden de iteración del Excel se respeta.
+- **El plan se actualiza con el dato real** (§8.1 pasa de "5.619 filas" a "5.619 filas brutas → 5.578 NIFs únicos tras dedup") en lugar de fingir que el dato bruto es la realidad. La actualización del plan refleja el conocimiento adquirido.
+
+**Aplicado en:** `apps/workers/pipeline/ingest_sabi.py` función `dedup_by_nif()` con tabla `TIER_PRIORITY` (T1=4, T2=3, T3=2, T4=1, descartado=0). Smoke `apps/workers/scripts/smoke_ingest_sabi.py` valida que (a) ingesta limpia produce 5.578 filas, (b) distribución por tier dentro de ±20% del plan §8.2, (c) re-ejecutar no cambia counts (idempotencia). Aplicado a `demin-dev` y `demin-prod` el 2026-05-04. Distribución final ambos entornos: T1=455, T2=171, T3=252, T4=855, descartado=3.845. Diferencias máximas con plan §8.2 (±20% tolerancia): -1.2% en T2, -0.2% en T4 — el resto exacto.
+
+**Métrica que confirma o desmiente la decisión:** cuando arranque `classify_descr.py` en Sprint 3, los ~1.733 leads accionables pasarán a Haiku para filtro IA. Si las empresas grandes (ACCIONA, FERROVIAL, DRAGADOS y similares afectadas por el dedup) caen como `no_fit` por tamaño, la decisión está validada — son el tipo de empresa que NO encaja en el ICP de Gonzalo (sweet spot 5k-100k€ según KB sesión 1) ni siquiera en su versión filial. Si caen como `fit`, revisar.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
