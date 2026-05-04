@@ -181,17 +181,32 @@ def call_llm(
     wait=wait_exponential(multiplier=1, min=1, max=4),
     reraise=True,
 )
-def _voyage_embed_call(texts: list[str]) -> list[list[float]]:
+def _voyage_embed_call(texts: list[str], input_type: str) -> list[list[float]]:
     res = _voyage_client.embed(
         texts,
         model=settings.VOYAGE_MODEL,
-        input_type="document",
+        input_type=input_type,
     )
     return res.embeddings
 
 
-def embed(texts: list[str]) -> list[list[float]]:
+def embed(
+    texts: list[str],
+    input_type: Literal["document", "query"] = "document",
+) -> list[list[float]]:
     """Embeds un batch de textos con `settings.VOYAGE_MODEL`.
+
+    `input_type` enruta a embeddings asimetricos del SDK Voyage:
+      - ``"document"`` (default): para chunks que se indexan en
+        ``kb_chunks``. Es lo que hace ``embed_documents`` al construir
+        el indice del KB.
+      - ``"query"``: para queries que se comparan contra los documentos
+        indexados. Mejora retrieval medible en el SDK; debe usarse en
+        cualquier smoke o worker que recupere chunks (ej. retrieval
+        de ``generate_draft`` en Fase 2 cuando consulte el KB).
+
+    Mezclar ``query`` para indexar y ``document`` para recuperar
+    (o viceversa) degrada retrieval — son representaciones distintas.
 
     Valida que la dim del primer vector coincida con
     `settings.VOYAGE_EMBEDDING_DIM` (default 1024 = `voyage-multilingual-2`).
@@ -201,11 +216,11 @@ def embed(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
     started = time.monotonic()
-    vectors = _voyage_embed_call(texts)
+    vectors = _voyage_embed_call(texts, input_type)
     elapsed_ms = int((time.monotonic() - started) * 1000)
     if len(vectors) != len(texts):
         raise RuntimeError(
-            f"Voyage devolvió {len(vectors)} vectores para {len(texts)} textos"
+            f"Voyage devolvio {len(vectors)} vectores para {len(texts)} textos"
         )
     expected = settings.VOYAGE_EMBEDDING_DIM
     actual = len(vectors[0])
@@ -215,8 +230,9 @@ def embed(texts: list[str]) -> list[list[float]]:
             f"(modelo {settings.VOYAGE_MODEL})"
         )
     logger.info(
-        "voyage_embed n=%d dim=%d model=%s elapsed_ms=%d",
+        "voyage_embed n=%d input_type=%s dim=%d model=%s elapsed_ms=%d",
         len(texts),
+        input_type,
         actual,
         settings.VOYAGE_MODEL,
         elapsed_ms,
