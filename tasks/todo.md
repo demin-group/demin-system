@@ -1078,6 +1078,36 @@ Material de soporte añadido al repo: `tasks/gaps_conocidos_kb_v1.md`,
 chunking ~500 tokens overlap 50, idempotente — ver Lección 3 para selección
 de modelo y plan §7.2 para pipeline).
 
+### 2026-05-04 — KB sesión 2: enriquecimiento tras revisión de correos reales
+
+Revisión de 10 correos reales de Gonzalo (cold outreach previo al sistema
+DEMIN + respuestas de prospectos). Hallazgos derivados aplicados al repo:
+
+- Patch a `tasks/kb_objeciones_v1.json`: ampliada `frases_gatillo` de
+  `obj_no_ahora_amable` con 7 variantes textuales reales; añadida nueva
+  categoría `obj_interesado_condicional` para zona gris entre interesado
+  puro y pide_info; añadida nueva acción `escalar_a_gonzalo_con_contexto`
+  a `tabla_acciones`. Total objeciones en JSON: 9 → 10.
+- Creado `tasks/correos_referencia_v1.md` — referencia interna del
+  proyecto, NO contenido de KB. Archivo histórico de las 2 plantillas
+  genéricas que Gonzalo usaba antes (referencia negativa) + patrones de
+  respuesta reales de prospectos (insumo para validar clasificador en
+  Fase 3).
+- Añadida lección 11 a `tasks/lessons.md`: cuando los correos archivados
+  de un humano son plantilla SaaS genérica, no son su voz auténtica — la
+  entrevista verbalizada deliberadamente manda como fuente de tono.
+
+NO se ha modificado el contenido cargado en `kb_documents` en sesión 1.
+NO se ha construido el doc 7 (`correos_gonzalo`) — el material disponible
+es plantilla genérica, no voz auténtica de Gonzalo. Doc 7 sigue en
+standby permanente.
+
+Decisión operativa confirmada: el sistema NUNCA copia plantillas en los
+correos generados. Cada correo es redacción IA completa, personalizada
+al prospecto, alimentada por el KB y por el research previo (decisión D8
+del plan §3). Las plantillas archivadas de Gonzalo son referencia
+negativa, no modelo a replicar.
+
 ---
 
 ## Apéndice A — Reglas no negociables (resumen para Claude Code)

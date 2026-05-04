@@ -274,6 +274,97 @@ cuando no hay material validado.
 
 ---
 
+## 2026-05-04 — Lección 11: los correos archivados de un humano pueden NO reflejar su voz auténtica si son plantilla SaaS genérica — la entrevista verbalizada manda
+
+**Contexto:** tras cargar el KB v1 en sesión 1 (29 abr 2026, basada en
+entrevista oral con Gonzalo) quedó en gap el doc 7 (`correos_gonzalo`)
+porque Gonzalo no había aportado correos reales. En sesión 2 (4 may 2026)
+aporta 10 capturas de correos reales suyos: cold outreach previo al sistema
+DEMIN + respuestas reales de prospectos.
+
+Al revisar el material, se detecta que **los correos en frío que Gonzalo
+mandaba antes son SOLO 2 plantillas genéricas repetidas sin personalización
+por prospecto**. Tienen marcas claras de copy genérico de SaaS de outreach
+(probablemente generadas con IA genérica tipo ChatGPT o copiadas de
+plantilla de mailchimp/lemlist):
+
+- Asuntos largos con paréntesis del nombre comercial.
+- Vocabulario corporativo enlatado: "partner técnico", "fase cero",
+  "Cumplimiento Normativo" con mayúscula.
+- Bullets en negrita con palabras clave.
+- Promesas operativas sin matiz ("retirada y limpieza en el día").
+- Sin personalización real al prospecto (solo cambia "[EMPRESA]").
+- Sin firma de texto, solo logo de imagen al cierre.
+
+**Comparado con la entrevista verbalizada del 29 abr 2026, todo lo anterior
+está en directa contradicción** con cómo Gonzalo dijo que quiere escribir
+("ir al grano, sin floruras, sin emojis, sin signos de exclamación, sin
+'increíble' ni 'sinergias', referencias concretas al prospecto, no
+genéricas").
+
+**Tres lecturas posibles:**
+
+1. Gonzalo escribe diferente de cómo dice que escribe.
+2. Estos correos los escribió otra persona o IA por él.
+3. Gonzalo cambió de estilo entre los correos archivados y la entrevista.
+
+Sin más información, las tres son posibles. **Independientemente de
+cuál sea verdad, la decisión correcta es la misma**: la entrevista
+verbalizada deliberadamente con preguntas guiadas y reflexión vale más
+como fuente de tono que correos archivados que pudieron escribirse con
+prisa, copiarse de plantilla o generarse con IA genérica.
+
+**Decisión aplicada:**
+
+- El doc `tono` del KB v1 NO se actualiza con estos correos. La
+  entrevista verbalizada manda.
+- El doc 7 (`correos_gonzalo`) NO se construye con estos correos como
+  modelo positivo. Sigue en standby permanente.
+- Los correos archivados se conservan como **referencia interna**
+  (`tasks/correos_referencia_v1.md`), explícitamente marcados como
+  referencia negativa: el "antes" del sistema, lo que el proyecto viene
+  a desplazar — no modelo a clonar.
+- El sistema sigue cumpliendo la decisión D8 del plan §3: redacción IA
+  completa por correo, alimentada por KB + research previo, NUNCA
+  copia de plantilla.
+
+**Donde SÍ es valioso el material:** las **respuestas reales de prospectos**
+a las plantillas de Gonzalo. Esas respuestas son datos de campo no
+inventados, especialmente útiles para alimentar `frases_gatillo` del
+clasificador `classify_replies.py` en Fase 3. La revisión enriquece
+`tasks/kb_objeciones_v1.json` con 7 variantes textuales reales de
+"no_ahora amable" y descubre una nueva categoría intermedia
+(`obj_interesado_condicional`) que el plan §11.2 no contemplaba.
+
+**Regla resultante:** cuando un humano aporta correos archivados como
+material de tono, no se asume automáticamente que esos correos son su
+voz auténtica. Hay que revisar si tienen marcas de plantilla genérica,
+copy SaaS, IA genérica, o intervención de terceros. Si las tienen, el
+material vale como **referencia negativa** y como **patrones de respuesta
+del mercado** (cuando incluya respuestas reales de interlocutores), pero
+NO como modelo de tono para entrenar al sistema. La fuente autoritativa
+de tono sigue siendo la entrevista verbalizada deliberadamente con el
+humano, donde se le pregunta cómo QUIERE escribir y se captura su
+respuesta consciente.
+
+**Aplicado en:**
+
+- `tasks/correos_referencia_v1.md` (creado en sesión 2, marcado como
+  referencia interna, NO contenido de KB).
+- `tasks/kb_objeciones_v1.json` (parche en sesión 2: 7 frases gatillo
+  nuevas + 1 categoría nueva + 1 acción nueva en tabla_acciones).
+- Ningún cambio al doc `tono` ni al `diferenciador` del KB v1.
+
+**Métrica que confirma o desmiente esta decisión:** cuando el sistema
+arranque en Fase 2 y mande sus primeros correos generados por LLM,
+medir reply rate vs. el reply rate histórico de las plantillas archivadas
+de Gonzalo (si hay datos). Si el reply rate del sistema mejora
+significativamente, la decisión está validada. Si empeora, revisar si la
+entrevista verbalizada tampoco era buen tono y hay que recalibrar
+(escenario poco probable pero auditable).
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>

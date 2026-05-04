@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "ultima_actualizacion": "2026-04-29",
+  "ultima_actualizacion": "2026-05-04",
   "fuente": "Entrevista KB con Gonzalo Pérez, sesión 1 (29 abr 2026)",
   "modelo_recomendado": "claude-haiku-4-5",
   "objeciones": [
@@ -35,7 +35,14 @@
         "para futuros proyectos",
         "cuando nos surja algo",
         "ya os contactaremos",
-        "lo tendremos presente"
+        "lo tendremos presente",
+        "tendremos en cuenta para futuros proyectos",
+        "tendremos en cuenta para futuras obras",
+        "hemos recibido correctamente su información comercial",
+        "los tendremos en cuenta para futuras ocasiones de colaboración",
+        "nos guardamos sus datos",
+        "nos quedamos con sus datos por si en un futuro podemos contar con sus servicios",
+        "la tendremos en cuenta"
       ],
       "categoria_sistema": "no_ahora",
       "tiene_respuesta_validada": false,
@@ -43,6 +50,27 @@
       "accion_sistema": "detener_secuencia_y_reengage_60",
       "puede_responder_autonomo": false,
       "razonamiento_clasificacion": "Objeción más frecuente según Gonzalo. Filosofía: 'no aceptar el no, intentar lucharlo para rascarle algo'. Pero cómo lucharlo concretamente NO está validado. Se trata como no_ahora (re-engage +60d), NO como respuesta directa."
+    },
+    {
+      "id": "obj_interesado_condicional",
+      "etiqueta": "Interés condicional — '¿hacéis X? si sí, os llamo'",
+      "frases_gatillo": [
+        "quería preguntar si",
+        "queríamos saber si",
+        "una pregunta antes de",
+        "antes de avanzar",
+        "depende de si",
+        "si hacéis presupuestos para",
+        "en caso de hacerlo me pondría en contacto",
+        "si trabajáis con",
+        "querría saber si os encargáis de"
+      ],
+      "categoria_sistema": "pide_info",
+      "tiene_respuesta_validada": false,
+      "respuesta_base": null,
+      "accion_sistema": "escalar_a_gonzalo_con_contexto",
+      "puede_responder_autonomo": false,
+      "razonamiento_clasificacion": "Zona intermedia entre interesado puro y pide_info. El prospecto NO ha rechazado pero tampoco ha pedido reunión: condiciona la continuación a que confirmemos un servicio o capacidad concreta. Detectado en sesión 2 (revisión de correos reales, oct 2025). Tratamiento: escalar a Gonzalo con el contexto del condicional para que él responda en persona — la respuesta requiere criterio sobre capacidades operativas que el sistema no puede comprometer (regla nº 4 Apéndice A: nunca prometer plazos, precios o disponibilidad en nombre de DEMIN)."
     },
     {
       "id": "obj_proveedor_existente",
@@ -237,6 +265,7 @@
   "tabla_acciones": {
     "generar_borrador_y_escalar_hitl": "Detener secuencia. Generar borrador de respuesta usando respuesta_base. Marcar como pendiente_aprobacion en cola de replies. NO enviar hasta que Gonzalo apruebe.",
     "escalar_a_gonzalo": "Detener secuencia. Marcar como escalado en cola de replies. NO generar borrador (Gonzalo decide desde cero).",
+    "escalar_a_gonzalo_con_contexto": "Detener secuencia. Marcar como escalado en cola de replies con flag de contexto adicional 'condicional'. NO generar borrador (Gonzalo decide desde cero, leyendo el matiz del prospecto). Notificación normal (no urgente).",
     "detener_secuencia_y_reengage_60": "Detener secuencia. Programar re-engage a +60 días con ángulo re_engage_60. Sin notificación.",
     "detener_secuencia_y_reengage_90": "Detener secuencia. Programar re-engage a +90 días con ángulo re_engage_90. Sin notificación.",
     "detener_secuencia_y_escalar_urgente": "Detener secuencia. Notificación urgente a Gonzalo. Generar borrador de respuesta sugerida.",
