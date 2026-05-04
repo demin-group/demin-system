@@ -269,6 +269,7 @@ dependencies = [
     { name = "selectolax" },
     { name = "sqlalchemy" },
     { name = "structlog" },
+    { name = "tenacity" },
     { name = "tldextract" },
     { name = "voyageai" },
 ]
@@ -297,6 +298,7 @@ requires-dist = [
     { name = "selectolax", specifier = ">=0.3.21" },
     { name = "sqlalchemy", specifier = ">=2.0.30" },
     { name = "structlog", specifier = ">=24.1.0" },
+    { name = "tenacity", specifier = ">=8.2.0" },
     { name = "tldextract", specifier = ">=5.1.2" },
     { name = "voyageai", specifier = ">=0.3.0" },
 ]
