@@ -536,6 +536,24 @@ entrevista verbalizada tampoco era buen tono y hay que recalibrar
 
 ---
 
+## 2026-05-04 — Lección 19: antes de construir Sprint X, revisar si las decisiones tomadas en Sprints previos siguen siendo válidas dado lo aprendido
+
+**Contexto:** Sprint 2 paso 1 (ingesta SABI) arrancó y se cerró con plan §8 original intacto. Solo después, durante la discusión arquitectónica del 2026-05-04 sobre cómo extraer emails (que abre el camino al Sprint 4), se hizo evidente que el §8 original tenía tres asunciones invalidadas por aprendizajes acumulados: (a) `scrape_emails.py` desde web genérico apunta a buzones `info@` con reply rate sostenidamente bajo en cold outreach B2B; (b) Apollo tiene cobertura mediocre en PYME construcción España (sector poco indexado en bases anglo); (c) el modelo company-first puro choca con D8 (redacción IA completa por correo, no plantillas) cuando no hay nombre del decisor. El refactor del §8 (D7 → D16/D17/D18, scrape_emails+apollo → Hunter Domain Search + interfaz `EmailFinder`) debió hacerse al **cierre de Sprint 1**, no a mitad de Sprint 2 — al cerrar Sprint 1 ya teníamos KB cargado, dossier de Gonzalo procesado y experiencia operativa de Lemwarm/web pública suficientes para detectar el desalineamiento. En su lugar, el Sprint 2 arrancó con un plan §8 estructuralmente desfasado y solo lo descubrimos al planificar Sprint 4.
+
+**Corrección humana:** refactor de §8/§14/§16/§17/§18 + decisiones nuevas D16/D17/D18 antes de tocar una sola línea de código de Sprint 3 o Sprint 4. Captura explícita de la regla de revisión de plan al cierre de cada Sprint para que el desfase no se repita.
+
+**Regla resultante:**
+
+- **Al cerrar cada Sprint**, antes de arrancar el siguiente, hacer una pasada sistemática por `tasks/todo.md` §8 (pipeline operativo) y §14 (fases) contrastando contra: (a) las lecciones acumuladas desde el último refactor de plan, (b) las decisiones cerradas (§3) que el Sprint cerrado pudo haber invalidado, (c) los aprendizajes operativos del Sprint (qué funcionó, qué se descartó, qué emergió como restricción nueva).
+- **Si hay desfase, refactor de plan ANTES de código.** Aplicar el principio "el plan refleja la realidad operativa actual" — si los Sprints futuros se construyen sobre suposiciones desfasadas, se gasta esfuerzo en código que se tirará. La auditoría de plan post-Sprint cuesta 1-2h; reescribir un Sprint mal planteado cuesta días.
+- **El refactor de plan es trabajo de planificación, NO de implementación**: solo toca documentación (`tasks/todo.md`, `tasks/lessons.md`). Si emergen cambios de schema o de código que el refactor implica, se anotan como TODO en el plan (ej. "ALTER constraint en migration X") y se consultan con el humano antes de migrar (regla 9 del Apéndice A).
+- **Trigger explícito:** al añadir la entrada de cierre de Sprint en §19 del plan, incluir un sub-bloque "**Revisión de plan post-Sprint**" con respuesta a tres preguntas: ¿alguna decisión de §3 quedó invalidada?, ¿alguna sección de §8 ya no refleja la arquitectura objetivo?, ¿algún Sprint pendiente de §14 está construido sobre suposiciones que este Sprint ha tumbado? Si las tres respuestas son "no", se loggea explícitamente. Si alguna es "sí", refactor antes de continuar.
+- **Aplicación generalizable más allá de Sprints**: la misma rutina aplica a cierres de Bloque, Fase y release v1 → v2. La cadencia de refactor de plan es proporcional al ritmo de aprendizaje del proyecto.
+
+**Aplicado en:** `tasks/todo.md` 2026-05-04, refactor §8 + decisiones D16/D17/D18 + actualización §4/§6.1/§14/§16/§17/§18 + entrada §19 "Refactor a modelo híbrido SABI-first + Hunter como email finder". El trigger explícito (sub-bloque "Revisión de plan post-Sprint" en cada futura entrada §19 de cierre de Sprint) entra en vigor desde el próximo cierre de Sprint.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
