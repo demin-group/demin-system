@@ -1199,6 +1199,33 @@ Resto de registros DNS intactos: SPF/DKIM/DMARC/MX de Workspace de Gonzalo + DNS
 
 **Lecciones nuevas registradas en `tasks/lessons.md`:** 12 (GitHub privado vs Vercel Pro), 13 (coordinación DNS Vercel/Namecheap), 14 (scope Production-only en Vercel), 15 (nombres exactos de env vars: `NEXT_PUBLIC_SUPABASE_URL` ≠ `SUPABASE_URL`).
 
+### 2026-05-04 — Fase 1 Sprint 1 paso 2: KB embebido en dev y prod
+
+`apps/workers/kb/embed_documents.py` implementado y aplicado contra los dos entornos. Pipeline: chunking por chars (~2000 con overlap 200, respeta cierres de párrafo `\n\n` hasta 300 chars antes del corte) → Voyage `voyage-multilingual-2` (1024 dim, `input_type="document"`) → `kb_chunks` con `cast(:embedding as vector)` ANSI (la sintaxis `:bind::vector` colisiona con SQLAlchemy text(), bug documentado en el código).
+
+**Estado tras la aplicación:**
+
+| entorno | kb_documents | kb_chunks |
+|---|---|---|
+| `demin-dev` | 6 (replicados desde prod vía `seed_kb_dev.py`) | 27 |
+| `demin-prod` | 6 (cargados en sesión 1 + sesión 2 patch) | 27 |
+
+Distribución por categoría idéntica en ambos: `casos_exito` 5, `diferenciador` 5, `icp` 4, `objeciones` 4, `servicios` 3, `tono` 6.
+
+**Bugs resueltos durante la implementación:**
+
+1. **Cast pgvector incompatible con `:bind`** — el operador PostgreSQL `::cast` colisiona con la sintaxis de bind de SQLAlchemy text(). Solución: `cast(:embedding as vector)` ANSI. Aplica también al smoke retrieval.
+2. **Voyage free tier 3 RPM** — el cap del backoff de tenacity en `shared/llm.py` (1+2+4=7s) no alcanzaba la ventana de 20s del rate limit. Solución sin tocar `shared/llm.py`: añadir `INTER_BATCH_SLEEP_S=30` + `INITIAL_WARMUP_SLEEP_S=25` en el worker, parametrizadas para bajar a 0 cuando se añada payment method en Voyage.
+3. **`ivfflat` con bajo volumen y `probes=1`** — el índice vector(1024) creado sin filas en la migration 04 quedó con ~100 lists vacíos; con probes=1 (default), retrieval devolvía 0 rows pese a tener 27 chunks. Solución: `SET LOCAL ivfflat.probes = 10` antes de cada SELECT en el retrieval. Cuando el volumen pase de ~1000 chunks (Fase 2 con prospectos), reindexar con `lists` óptimo y revisar probes.
+
+**Pivot técnico aplicado en `shared/llm.py`:** parámetro nuevo `input_type: Literal["document","query"]` en `embed()`. Embeddings asimétricos del SDK Voyage: `"document"` para indexar (`embed_documents`), `"query"` para recuperar (`smoke_kb_retrieval` y futuros workers que consulten el KB en Fase 2). Mezclar ambos roles degrada retrieval — son representaciones distintas.
+
+**Smoke retrieval recalibrado** tras VEREDICTO AMARILLO inicial. Criterio nuevo basado en presencia de signals contextuales (palabras-clave/cifras/términos extraídos leyendo los 6 docs reales del KB), no en categorías intuidas a priori. Output auditable: preview de 400 chars del top-1 + signals matched, sin necesidad de abrir BD. **VERDE 3/3** con threshold ≥2 signals: q1 (constructora pequeña Madrid) → diferenciador (4 signals), q2 (precio demolición 200 m²) → casos_éxito (3 signals), q3 (coordinar con arquitectos) → servicios (6 signals). Distancias top-1 entre 0.64 y 0.71 (RAG discrimina). Aprendizaje sobre cómo se diseña un criterio de smoke capturado como Lección 17.
+
+**Pendiente para cerrar Sprint 1:** paso 3 (ya cubierto por el smoke verde) y paso 4 (KB editor en dashboard, Bloque B). Sprint 1 NO se cierra hasta que el dashboard tenga la pantalla CRUD del KB.
+
+**Lecciones nuevas registradas en `tasks/lessons.md`:** 16 (config se adapta a la convención del repo, no al revés — capturada en Sprint 1 paso 1), 17 (criterio de validación de smokes se diseña leyendo el contenido real, no a priori).
+
 ---
 
 ## Apéndice A — Reglas no negociables (resumen para Claude Code)
