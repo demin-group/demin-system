@@ -554,6 +554,68 @@ entrevista verbalizada tampoco era buen tono y hay que recalibrar
 
 ---
 
+## 2026-05-06 — Lección 21: validar pricing y disponibilidad de API en free tier ANTES de fijar un proveedor en el plan
+
+**Contexto:** la decisión D17 (2026-05-04) eligió Hunter como email finder primario y RocketReach como adapter de respaldo, asumiendo que RocketReach tenía API accesible en su plan inferior. Verificación posterior (2026-05-06), tras cerrar la prueba experimental de Hunter: la API de RocketReach NO está disponible en planes inferiores a Ultimate ($2.484/año, ~207€/mes), excediendo el techo D15 del proyecto (150€/mes) por sí solo. Mantener RocketReach como adapter de respaldo en el plan no tenía sentido — activarlo nos saca del presupuesto.
+
+**Corrección humana:** descartar RocketReach explícitamente (D19) y reescribir §4, §6.1, §8.5, §8.6, §16, §17 y §18 para reflejar el cambio. Pivote a Skrapp y Apollo, ambos con free tier accesible para la prueba comparativa.
+
+**Regla resultante:** antes de fijar cualquier proveedor en el plan, verificar tres condiciones:
+
+1. **Existe API pública** documentada (no solo UI o exportación manual).
+2. **El free tier permite probar la API significativamente** — no basta con que exista plan gratuito si la API está bloqueada hasta plan superior.
+3. **El plan más barato con API cabe en presupuesto** — incluyendo todos los costes recurrentes ya comprometidos del proyecto.
+
+Si las tres no se cumplen, el proveedor NO entra al plan ni siquiera como adapter de respaldo. La abstracción `EmailFinder` (D17, mantenida en D19) sigue siendo la decisión correcta, pero los adapters concretos detrás de la interfaz se eligen tras validar los tres puntos arriba, no antes.
+
+**Aplicable a futuros proveedores externos en el proyecto:** análisis pre-Bitwarden de cualquier alta de servicio (CRM, enriquecimiento, verificación de email, scraping as-a-service, gateway de IA alternativo, etc.). El error es transversal — no es específico de email finders.
+
+**Aplicado en:** `tasks/todo.md` 2026-05-06 (D19 + revisión §4 / §6.1 / §8.5 / §8.6 / §16 / §17 / §18) y entrada §19 "Hunter AMARILLO + RocketReach descartado + …". Skrapp y Apollo entran a la prueba comparativa de Sprint 4 paso 1 con la regla aplicada (free tier + API + presupuesto verificados antes).
+
+---
+
+## 2026-05-06 — Lección 22: el hit rate de email finders en construcción España PYME puede ser estructuralmente bajo — probar al menos 2-3 adapters antes de comprometer plan pagado
+
+**Contexto:** la prueba experimental de Hunter sobre 25 empresas SABI (5/5/5/10 por tier, sample diverso por localidad y descripción) terminó con VEREDICTO AMARILLO al 8% hit rate decisor (T1=0%, T2=20%, T3=20%, T4=0%). El threshold §16 que justificaba elegir Hunter como primario era 30%. Cuando Hunter cubría, los datos eran excelentes (cargos directamente accionables: Director Técnico, Project Manager, Director of Procurement; confidence 96-99). El problema no era señal/ruido sino **cobertura del índice** — el sector construcción PYME España no está bien indexado por Hunter.
+
+**Hipótesis razonable:** otros email finders globales (Skrapp, Apollo, Lusha, Cognism…) pueden tener el mismo gap estructural por la misma razón (sector poco internacional, empresas pequeñas que no aparecen en bases de datos anglo-céntricas, web pública limitada o ausente). El gap NO es bug del proveedor concreto — es característica del sector.
+
+**Corrección humana:** no escalar el problema con dinero. La decisión correcta es:
+
+1. **Probar al menos 2-3 adapters** sobre el mismo sample antes de comprometer plan pagado de cualquiera.
+2. **Si todos dan hit rate bajo** (<30% decisor), no se trata de elegir el "menos malo" pagando por él — la cobertura del sector está limitada estructuralmente.
+3. **La respuesta correcta a cobertura estructuralmente baja** es replantear la estrategia (en este proyecto: D20 — política de aceptación ampliada por tier acepta `info@` en T1/T3 además de decisor).
+
+**Regla resultante:** ante un proveedor de datos externo cuyo hit rate validado es bajo en el sector objetivo, NO escalar a plan pagado del mismo proveedor — primero confirmar si el bajo hit rate es del proveedor concreto (otro adapter dará >30%) o estructural del sector (todos darán <30%). Si es estructural, replantear estrategia aguas arriba (criterio de aceptación, segmentación por subgrupo, fuentes alternativas) en lugar de comprar más volumen.
+
+**Aplicable a futuros proveedores de datos del proyecto:** verificadores de email, scrapers, fuentes de noticias del prospecto, plataformas de research B2B. La regla aplica más allá de email finders.
+
+**Aplicado en:** `tasks/todo.md` 2026-05-06 (§14 Sprint 4 paso 1 = prueba comparativa Skrapp + Apollo sobre el mismo sample 25 empresas con criterio dual D20; §16 riesgo nuevo "cobertura email finders estructuralmente baja"; §19 entrada "Hunter AMARILLO + …"). La regla queda capturada para futuras decisiones de proveedor.
+
+---
+
+## 2026-05-06 — Lección 23: el criterio "solo decisor estricto vale" es demasiado restrictivo en B2B España PYME — política de aceptación de emails segmentada por tier de empresa
+
+**Contexto:** la decisión D18 (2026-05-04) limitaba el universo de contacts útil a "2-3 decisores reales por empresa" (gerente, jefe de obra, responsable compras). Lectura inicial: cualquier email que no fuera de uno de esos cargos quedaba descartado. La prueba experimental de Hunter sobre 25 empresas SABI (2026-05-06) reveló que **9 de 25 empresas devolvían emails con NOMBRE pero SIN cargo identificado** (patrón típico PYME ES: Hunter indexa el dominio y captura `nombre@empresa.es` pero no la web/LinkedIn donde aparece el cargo). Aplicar el filtro estricto descartaba todos esos contacts, dejando hit rate efectivo en 8% — muy por debajo del 30% del threshold §16.
+
+Inspección manual de los 9 casos: empresas T1 (1k-5k k€) y T3 (0.5k-1k k€), microempresas o muy pequeñas, mostraban patrón claro — `info@empresa.es`, `contacto@empresa.es`, `gerencia@empresa.es` son leídos directamente por el gerente sin filtro humano intermedio. NO son buzones desatendidos; son la vía estándar de contacto en empresas de 1-10 empleados. Empresas T2 (5k-20k k€), en cambio, sí tienen filtros administrativos que descartan correos cold a `info@`.
+
+**Corrección humana:** ampliar D18 con D20 — política de aceptación de emails segmentada por tier de empresa, con whitelist positiva por prefijo y whitelist negativa global.
+
+**Regla resultante:** en B2B PYME España, la utilidad de un email para outreach NO depende solo del cargo identificado del destinatario. Depende del cruce **(cargo / tipo de email) × (tamaño de la empresa)**:
+
+- En empresas micro/pequeñas (1-10 empleados, T1 y T3 en SABI), los buzones genéricos de la whitelist positiva (`info@`, `contacto@`, `hola@`, `gerencia@`, `obras@`, `proyectos@`, `comercial@`, `direccion@`, `oficina@`, `administracion@`) son leídos por el gerente — outreach útil.
+- En empresas medianas (T2: 5k-20k k€), los buzones genéricos sí tienen filtro administrativo — outreach a `info@` con reply rate sostenidamente bajo. Allí mantenemos exigencia de decisor o nominal con cargo identificable.
+- En todos los tiers, la **whitelist negativa global** descarta `marketing@`, `rrhh@`, `prensa@`, `comunicacion@`, `noreply@`, `facturas@`, `contabilidad@`, `webmaster@`, `soporte@`, etc. — esos buzones no llevan a un decisor en ningún tamaño de empresa.
+
+Implementación técnica: campo `contacts.email_type` (enum: `decisor` | `nominal` | `corporativo_pequeno` | `descartado`) + campo `email_priority` (1-4) para ordenar candidatos cuando hay varios por empresa. La política se aplica en el worker `find_contacts.py` (renombrado desde `find_decisors_hunter.py`) y se lee en el prompt de redacción §10.2 para adaptar apertura/llamada al destinatario según el tipo de email.
+
+**Aplicable más allá de DEMIN:** cualquier outreach B2B en sectores con prevalencia de PYME pequeña debe contemplar la asimetría tamaño-empresa × utilidad-de-email-genérico. La regla NO es "no escribir a info@ nunca" (regla común en cold outreach US) ni "escribir a cualquier email vale" (queda gente molesta). Es segmentar por tier y aplicar criterio diferenciado.
+
+**Aplicado en:** `tasks/todo.md` 2026-05-06 (D20 nueva en §3, §6.1 columnas `email_type` + `email_priority` pendientes Sprint 4, §8.5 reescrito con jerarquía decisor > nominal > corporativo_pequeno por tier + whitelists, §10.2 regla "variantes por email_type" pendiente prompt completo, §14 Sprint 4 paso 4 worker `find_contacts.py` con política tier-segmentada, §19 entrada "Hunter AMARILLO + …"). La implementación de campo + worker + prompt queda agendada para Sprint 4 o 5 según orden final.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>

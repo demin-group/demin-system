@@ -121,8 +121,10 @@ Métricas operativas que sí trackeamos para diagnosticar (no como objetivo): bo
 | D14 | Aprendizaje: manual en v1 (humanos ajustan KB/prompts viendo métricas) | [DECIDIDO] |
 | D15 | Tope SaaS: 150€/mes | [DECIDIDO] |
 | D16 | Modelo de leads híbrido empresa-decisor. SABI sigue siendo universo de empresas (5.578 ya cargadas). Para cada empresa accionable con `ia_fit='fit'`, el sistema busca 2-3 decisores reales (gerente, jefe de obra, responsable compras) usando email finder por dominio. | [DECIDIDO 2026-05-04] |
-| D17 | Hunter.io como email finder primario, RocketReach como adapter de respaldo. Interfaz `EmailFinder` abstracta desde el principio para evitar refactor mayor si Hunter falla. ExtractorLead descartado para ahora (modelo de filtros generales no encaja con flujo SABI-first); apuntado como fuente potencial de descubrimiento de leads nuevos cuando se agoten los SABI. Sustituye a D7. | [DECIDIDO 2026-05-04] |
+| D17 | ~~Hunter.io como email finder primario, RocketReach como adapter de respaldo. Interfaz `EmailFinder` abstracta desde el principio para evitar refactor mayor si Hunter falla. ExtractorLead descartado para ahora (modelo de filtros generales no encaja con flujo SABI-first); apuntado como fuente potencial de descubrimiento de leads nuevos cuando se agoten los SABI. Sustituye a D7.~~ | [SUPERSEDED por D19 — 2026-05-06] |
 | D18 | 2-3 decisores por empresa (gerente + jefe de obra + responsable de compras donde aplique). Más allá de 3 genera percepción de spam para el destinatario; menos pierde el lead si el primero no responde. | [DECIDIDO 2026-05-04] |
+| D19 | RocketReach descartado por API gateada al plan Ultimate ($2.484/año, excede techo D15). Hunter validado AMARILLO (8% hit rate decisor sobre 25 empresas SABI, commit 3c5b7a9). Plan revisado: probar **Skrapp y Apollo** (free tier con API) sobre el mismo sample 25 empresas con criterio dual (decisor + any email útil según D20). Adapter primario y secundario decididos tras prueba comparativa, no antes. La interfaz abstracta `EmailFinder` se mantiene. Sustituye a D17. | [DECIDIDO 2026-05-06] |
+| D20 | Política de aceptación de emails por tier de empresa. **T1 y T3** (1k-5k€ y 0.5k-1k€) aceptan decisor + nominal con cargo + corporativo_pequeno (whitelist positiva por prefijo: `info@`, `contacto@`, `gerencia@`, `obras@`, etc.). **T2** (5k-20k€) acepta decisor o nominal con cargo identificable; sin eso, fallback humano. **T4** (sin web) pendiente de resolver tras prueba comparativa (D19). Whitelist negativa global (todos los tiers): `marketing@`, `rrhh@`, `prensa@`, `noreply@`, etc. Razón: empresas micro/pequeñas no filtran `info@` — el gerente lo lee directamente; medianas sí filtran y exigen al menos email nominal. | [DECIDIDO 2026-05-06] |
 
 ---
 
@@ -142,8 +144,8 @@ Métricas operativas que sí trackeamos para diagnosticar (no como objetivo): bo
 | Email warmup | Lemwarm Essential 29€/mes standalone (1 buzón) | Descartados Warmup Inbox y Smartlead por bloqueo de App Passwords / OAuth no verificado en Workspace |
 | Scraping | Python `httpx` + `selectolax` + `tldextract` | Más rápido que requests+BS4 |
 | Browser-needed scraping | `playwright` (cuando JS bloquee httpx) | Solo si fallback |
-| Email finder primario | Hunter.io Domain Search API | Por dominio (encaja con flujo SABI-first). Free tier 25/mes para validación; Starter ~30-45€/mes para procesar las ~1.000 empresas accionables; cancelable tras procesamiento (D17) |
-| Email finder secundario | RocketReach API (adapter inactivo hasta que falle Hunter) | Backup vía interfaz `EmailFinder` abstracta. Activación condicional si hit rate Hunter <30% en construcción ES PYME |
+| Email finder primario | A decidir tras prueba comparativa Hunter / Skrapp / Apollo (D19) | Hunter validado AMARILLO al 8% decisor sobre 25 empresas SABI (commit 3c5b7a9, 2026-05-06). Skrapp y Apollo en evaluación con criterio dual (decisor + any email útil, D20). Free tiers cubren la prueba comparativa; el plan pagado del adapter ganador se evalúa después. |
+| Email finder secundario | A decidir tras la misma prueba comparativa (uno de los dos restantes) | Backup vía interfaz `EmailFinder` abstracta. RocketReach descartado por API gateada al plan Ultimate ($2.484/año, excede techo D15) — capturado en D19 y Lección 21. |
 | Hosting dashboard | Vercel free | Suficiente |
 | Repo | GitHub privado | Estándar |
 | Logs / observabilidad | Logflare (free tier de Supabase) o Axiom | Trazabilidad básica |
@@ -245,11 +247,38 @@ create table contacts (
   company_id      uuid references companies(id) on delete cascade,
   email           text not null,
   email_verified  boolean default false,
-  email_source    text check (email_source in ('sabi','web_scrape','apollo','hunter','rocketreach','manual')),
-  -- 'hunter' / 'rocketreach' añadidos 2026-05-04 (D17). 'apollo' y 'web_scrape' se
-  -- conservan por compatibilidad histórica aunque ya no se usen en el flujo activo
-  -- (D17 sustituye a D7). TODO migration al arrancar Sprint 4: ALTER TABLE contacts
-  -- DROP CONSTRAINT + ADD CONSTRAINT con la lista ampliada.
+  email_source    text check (email_source in ('sabi','web_scrape','apollo','hunter','skrapp','manual')),
+  -- 'hunter' añadido 2026-05-04 (D17). 'skrapp' añadido 2026-05-06 (D19);
+  -- 'rocketreach' eliminado por descarte (D19 supersede D17 — RocketReach
+  -- requiere plan Ultimate $2.484/año, excede techo D15, ver Lección 21).
+  -- 'apollo' y 'web_scrape' se conservan por compatibilidad histórica.
+  -- TODO migration al arrancar Sprint 4: ALTER TABLE contacts DROP CONSTRAINT
+  -- + ADD CONSTRAINT con la lista revisada, junto con email_type y
+  -- email_priority abajo.
+  email_type      text check (email_type in ('decisor','nominal','corporativo_pequeno','descartado')),
+  -- AÑADIDO 2026-05-06 (D20). Pendiente migration al arrancar Sprint 4.
+  --   decisor:             cargo claro de gerente / director / responsable
+  --                        con autoridad de contratación de obras.
+  --   nominal:             email tipo `nombre.apellido@` con cargo no claro
+  --                        o no decisor estricto pero útil. Aceptado en
+  --                        todos los tiers como segundo recurso.
+  --   corporativo_pequeno: buzón con prefijo de la whitelist positiva
+  --                        (info@, contacto@, hola@, gerencia@, obras@,
+  --                        proyectos@, comercial@, direccion@, oficina@,
+  --                        administracion@). Aceptado SOLO en T1 y T3
+  --                        (empresas pequeñas donde el gerente lee `info@`
+  --                        directamente sin filtro humano intermedio, D20).
+  --   descartado:          buzones de la whitelist negativa global
+  --                        (marketing@, rrhh@, prensa@, comunicacion@,
+  --                        noreply@, facturas@, contabilidad@, webmaster@,
+  --                        soporte@, etc.). NO se usa para outreach en
+  --                        ningún tier.
+  email_priority  int check (email_priority between 1 and 4),
+  -- AÑADIDO 2026-05-06 (D20). Pendiente migration al arrancar Sprint 4.
+  -- Orden de envío cuando hay varios contacts por la misma empresa.
+  -- 1 = mejor candidato (decisor con confidence alto del adapter primario);
+  -- 4 = peor (corporativo_pequeno en T1/T3 sin alternativa). Se rellena al
+  -- insertar en find_contacts.py según política tier-segmentada.
   nombre          text,                  -- si lo conocemos
   cargo           text,
   linkedin_url    text,
@@ -528,47 +557,58 @@ Si no puedes extraer algún campo, deja "" o []. No inventes nunca.
 
 El JSON se guarda en `companies.research_data`. Coste: ~$0.005 por empresa, ~5€ para 1.000 empresas.
 
-### 8.5 Búsqueda de decisores via Hunter Domain Search
+### 8.5 Búsqueda de contactos via email finder
 
-**Reescrito 2026-05-04 (D16, D17, D18).** Sustituye al antiguo §8.5 (`scrape_emails.py` desde web genérico `info@`), eliminado del flujo activo por reply rate bajo del canal `info@` y por el cambio a modelo híbrido empresa-decisor.
+**Reescrito 2026-05-06 (D19, D20).** Sustituye al §8.5 de 2026-05-04 ("Búsqueda de decisores via Hunter Domain Search"), tras validación empírica AMARILLO de Hunter (8% hit rate decisor en 25 empresas SABI, commit 3c5b7a9) y captura de la nueva política de aceptación de emails por tier (D20). El antiguo §8.5 (`scrape_emails.py` desde web genérico) sigue eliminado del flujo activo, salvo que el adapter primario indexe `info@` por sí mismo (no por scraping ad-hoc).
 
-Worker `find_decisors_hunter.py`. Para cada `company` con `ia_fit='fit'` y dominio web:
+Worker `find_contacts.py` (renombrado desde `find_decisors_hunter.py`). Para cada `company` con `ia_fit='fit'`, llama al adapter primario seleccionado tras la prueba comparativa de §8.6 e intenta encontrar candidatos en orden:
 
-1. Extrae el dominio limpio del campo `web` (vía `tldextract`).
-2. Llama a Hunter **Domain Search** pasando el dominio. Hunter devuelve hasta N emails encontrados con cargo, nombre, departamento y `confidence` (0-100).
-3. Filtra por cargos relevantes según D18: gerente, director general, CEO, jefe de obra, responsable de compras, director técnico, jefe de proyectos. Excluye marketing, RRHH, financiero salvo que sean el único candidato.
-4. Selecciona 2-3 candidatos (D18) priorizando por `confidence` y por especificidad del cargo (jefe de obra > gerente > director general en orden de relevancia para DEMIN).
-5. Inserta en `contacts` con `email_source='hunter'`. El primero por prioridad es `is_primary=true`.
+1. **Decisor** — email cuyo cargo (devuelto por Hunter / Skrapp / Apollo) matchea uno de: gerente, director general, CEO, jefe de obra, responsable compras, director técnico, jefe de proyectos, jefe de operaciones, director comercial, director financiero, director ejecutivo. Cargo identificable y con autoridad de contratación de obras. → `contacts.email_type='decisor'`.
+2. **Nominal** — email tipo `nombre.apellido@` con cargo identificable aunque NO sea decisor estricto (ej. coordinador, técnico, project manager junior, jefe de equipo). Aceptado en todos los tiers como segundo recurso. → `contacts.email_type='nominal'`.
+3. **Corporativo pequeño** — buzón con prefijo de la **whitelist positiva**, aceptado SOLO en **T1 y T3** (empresas pequeñas donde el gerente lee `info@` directamente, sin filtro humano intermedio — D20). Whitelist positiva: `info@`, `contacto@`, `hola@`, `gerencia@`, `obras@`, `proyectos@`, `comercial@`, `direccion@`, `oficina@`, `administracion@`. → `contacts.email_type='corporativo_pequeno'`.
+4. **Fallback humano** — si la empresa es **T2** (5k-20k k€) y no hay decisor ni nominal, pasa a la cola "decisor manual" del dashboard para que Gonzalo intervenga. Razón: empresas medianas sí tienen filtros administrativos en buzones genéricos (D20); mandar a `info@` ahí tiene reply rate sostenidamente bajo.
 
-**Empresas T4 (sin web):** Domain Search no aplica sin dominio. Hunter ofrece **Company Search** (por nombre de empresa) — cobertura incierta para PYME construcción España. **Pendiente de validación experimental antes de Sprint 4** (prueba con 25 empresas T4 contra Hunter Company Search; si hit rate <30%, T4 se gestiona manualmente o queda fuera del primer batch).
+**Whitelist negativa global** (rechazo en cualquier tier; marca `email_type='descartado'` y NO se usa para outreach):
 
-**Si Hunter no encuentra decisores en la empresa:** se delega al adapter de respaldo en §8.6 (RocketReach). Si tampoco cubre, la empresa queda en `tier='descartado'` con `ia_fit_reason='no_decisores_encontrados'` — no se reactiva scraping web genérico.
+```
+marketing@, rrhh@, prensa@, comunicacion@, comunicaciones@,
+noreply@, no-reply@, facturas@, contabilidad@, webmaster@,
+soporte@, support@, ayuda@, jobs@, empleo@, trabaja@
+```
+
+La whitelist positiva, la whitelist negativa y la política tier-segmentada viven en `apps/workers/shared/email_policy.py` (pendiente Sprint 4) para que sean editables sin tocar el worker.
+
+**Selección y priorización (D18 + D20):** se eligen 2-3 candidatos por empresa máximo (D18). El campo `contacts.email_priority` (1-4) ordena los candidatos: 1 = decisor con confidence alto del adapter primario; 4 = corporativo_pequeño en T1/T3 cuando es el único candidato. El primero por prioridad lleva `is_primary=true`. `email_source` se rellena con el adapter que devolvió el dato (`'hunter'` | `'skrapp'` | `'apollo'` | `'manual'`).
+
+**Empresas T4 (sin web): pendiente de resolver tras prueba comparativa.** Hunter validó **0% hit rate en T4** sobre el sample experimental (commit 3c5b7a9, 1 falso positivo en 10 empresas). Skrapp y Apollo se prueban en la misma muestra antes de comprometer estrategia para los 855 T4 del universo SABI. Si los tres adapters dan 0% sin web en construcción ES, T4 se gestiona manualmente o queda fuera del primer batch (decisión final en §14 Sprint 4 paso 2 tras pruebas comparativas).
+
+**Si ningún adapter cubre la empresa** (T1/T3 sin nada en la whitelist positiva, T2 sin decisor ni nominal): la empresa queda con `ia_fit_reason='no_contactos_encontrados'`. T2 entra a "decisor manual" como antes; T1/T3 quedan archivadas (no se reactiva scraping web genérico — la decisión sobre `info@` rascado solo se relaja a través del índice del adapter primario, no por scraping ad-hoc).
 
 ### 8.6 Enriquecimiento — interfaz EmailFinder
 
-**Reescrito 2026-05-04 (D17).** Sustituye al antiguo §8.6 (`apollo_enrich.py` para Tier 4).
+**Reescrito 2026-05-04 (D17). Revisado 2026-05-06 (D19, D20)** tras descarte de RocketReach (API gateada al plan Ultimate $2.484/año, excede techo D15 — Lección 21) y captura de la política de aceptación por tier.
 
-Worker `enrich_emails.py` consume una interfaz abstracta `EmailFinder` con dos adapters:
+Worker `enrich_emails.py` consume una interfaz abstracta `EmailFinder`. La abstracción se mantiene desde el día 1 para permitir el swap de adapter sin refactor de los workers río abajo, pero los adapters concretos quedan **pendientes** hasta cerrar la prueba comparativa de §14 Sprint 4:
 
-- **HunterAdapter** (primario, activo desde Sprint 4). Encapsula las llamadas de §8.5 más cualquier extensión futura (autocompletar email a partir de nombre + dominio vía Hunter Email Finder).
-- **RocketReachAdapter** (código preparado pero **inactivo**). Activación condicional si Hunter cae o si hit rate <30% en construcción ES PYME (ver §16). El swap es cambio de feature flag, no refactor.
+- **Adapter primario** (a designar). Se decide tras prueba comparativa de **Hunter, Skrapp y Apollo** sobre el mismo sample de 25 empresas SABI (5/5/5/10 por tier) con criterio dual (decisor + any email útil según D20). El que tenga mejor combinación de hit rate dual + coste + cobertura T4 entra como primario.
+- **Adapter secundario** (a designar). Uno de los dos restantes, mismo proceso. Activación condicional si el primario cae, cambia pricing, o baja su hit rate por debajo del umbral en monitoreo continuo.
 
-La interfaz fija el contrato:
+La interfaz fija el contrato (métodos renombrados de `find_decisors_*` a `find_contacts_*` para reflejar la jerarquía de aceptación de D20: decisor + nominal + corporativo_pequeno):
 
 ```python
 class EmailFinder(Protocol):
-    def find_decisors_by_domain(self, domain: str, company_name: str) -> list[Decisor]: ...
-    def find_decisors_by_company(self, company_name: str, location: str) -> list[Decisor]: ...
+    def find_contacts_by_domain(self, domain: str, company_name: str) -> list[Contact]: ...
+    def find_contacts_by_company(self, company_name: str, location: str) -> list[Contact]: ...
     def find_email_by_name(self, full_name: str, domain: str) -> str | None: ...
 ```
 
-Justificación de la abstracción desde el día 1: cuando Hunter falla (rate limit, downgrade de plan, cobertura insuficiente), el coste de cambio se reduce a inicializar `RocketReachAdapter` en lugar de `HunterAdapter`. Sin la interfaz, sería refactor mayor de los workers río abajo.
+Justificación de mantener la abstracción aun sin adapter elegido: cuando el primario falla (rate limit, downgrade de plan, cobertura insuficiente), el coste de cambio se reduce a inicializar el secundario. Sin la interfaz, refactor mayor de los workers río abajo (research integrado, generación de borradores con destinatario nominal vs corporativo en §10.2, etc.).
 
-**Fallback final si NI Hunter NI RocketReach cubren una empresa:** notificar a Gonzalo manualmente vía dashboard (cola "decisor manual"). NO reactivar scraping web genérico — la decisión de eliminar `info@` del flujo es estratégica (calidad de canal), no técnica.
+**Fallback final si NI primario NI secundario cubren una empresa:** notificar a Gonzalo manualmente vía dashboard (cola "decisor manual"). NO reactivar scraping web genérico — la decisión de eliminar `info@` rascado sigue vigente para T2 (filtros administrativos). Para T1/T3, `info@` puede entrar al flujo SOLO si el adapter primario lo devuelve indexado (categorizado como `email_type='corporativo_pequeno'`, D20), nunca por scraping ad-hoc.
 
 ### 8.7 Verificación de emails
 
-Worker `verify_emails.py`. Por cada email nuevo (provenga de Hunter, RocketReach o manual):
+Worker `verify_emails.py`. Por cada email nuevo (provenga del adapter primario, del secundario o de la cola manual de Gonzalo):
 
 1. Sintaxis (regex)
 2. MX record del dominio (DNS lookup)
@@ -576,7 +616,7 @@ Worker `verify_emails.py`. Por cada email nuevo (provenga de Hunter, RocketReach
 
 Marca `email_verified = true/false`.
 
-**Defensa en profundidad:** Hunter ya devuelve `confidence` y verifica MX/SMTP internamente. `verify_emails.py` corre igualmente como salvaguardia gratis — coste cero, latencia de DNS y nada más, y captura el caso en que Hunter dé un email obsoleto (la persona dejó la empresa entre el indexado de Hunter y el envío real).
+**Defensa en profundidad:** los adapters primario/secundario (Hunter/Skrapp/Apollo según resultado de la prueba comparativa de §14 Sprint 4 paso 2) suelen devolver `confidence` y verificación MX/SMTP propias. `verify_emails.py` corre igualmente como salvaguardia gratis — coste cero, latencia de DNS y nada más, y captura el caso en que el adapter dé un email obsoleto (la persona dejó la empresa entre el indexado y el envío real).
 
 ---
 
@@ -691,6 +731,14 @@ Devuelve JSON:
 ```
 
 Por ángulo (`opening`, `reframe`, `closing`, `re_engage_60`, `re_engage_90`), un prompt distinto que rellena `{objetivo_segun_angulo}`.
+
+**Variantes por `email_type` (regla añadida 2026-05-06 con D20, prompt pendiente Sprint 4 o 5).** El prompt de redacción debe adaptar la apertura/llamada al destinatario según el campo `contacts.email_type` del destinatario:
+
+- `decisor` — apertura directa al rol: *"te escribo directamente como responsable de obras de [empresa]…"*. Se asume nombre y cargo conocidos.
+- `nominal` — apertura suavizada al perfil: *"te escribo a ti porque encajaba con el perfil que coordina demoliciones en [empresa]…"*. Nombre conocido, cargo no claramente identificado.
+- `corporativo_pequeno` — apertura impersonal pero respetuosa al equipo: *"envío esto a [empresa] porque pensaba que podría interesar a quien coordina obras en vuestro equipo…"*. Sin nombre — buzón genérico de empresa pequeña que el gerente lee directamente (D20).
+
+El KB y el research siguen alimentando el prompt igual; la variante solo cambia la apertura/llamada al destinatario, no el cuerpo. Implementación pendiente en Sprint 4 o 5 según el orden final — los prompts concretos `generate_email_{angle}.md` viven en `apps/workers/shared/prompts/` y se versionan según regla 8 del Apéndice A.
 
 ### 10.3 Validación post-generación
 
@@ -951,9 +999,12 @@ Eso es v2 si tiene sentido, no antes.
 - [ ] Pantalla "Pipeline" funcional (read-only)
 - [x] Auth con magic link — operativa desde Bloque B3 (pre-Sprint 1)
 - [ ] Worker `research_prospect.py` ejecutado sobre los `ia_fit='fit'` con web (~5€)
-- [ ] Worker `find_decisors_hunter.py` ejecutado sobre los `ia_fit='fit'` con dominio (Sprint 4 — D16/D17/D18)
-- [ ] Worker `enrich_emails.py` con interfaz `EmailFinder` + `HunterAdapter` + `RocketReachAdapter` (Sprint 4 — D17)
-- [ ] Validación experimental de Hunter Company Search en 25 empresas T4 sin web (decisión go/no-go antes de Sprint 4)
+- [x] Validación experimental Hunter sobre 25 empresas SABI — VEREDICTO AMARILLO 8% hit rate decisor (commit 3c5b7a9, 2026-05-06)
+- [ ] Sprint 4 paso 1: pruebas comparativas Skrapp y Apollo sobre el mismo sample 25 empresas (free tier, coste 0€) con métricas duales decisor + any email útil según D20 (D19)
+- [ ] Sprint 4 paso 2: decisión adapter primario y secundario tras 3 hit rates comparables (Hunter / Skrapp / Apollo)
+- [ ] Sprint 4 paso 3: migration BD — `contacts.email_source` revisado (skrapp añadido, rocketreach eliminado) + nuevas columnas `email_type` y `email_priority` (D19, D20, §6.1)
+- [ ] Sprint 4 paso 4: worker `find_contacts.py` con política tier-segmentada (decisor / nominal / corporativo_pequeno con whitelist por prefijo y tier, D20)
+- [ ] Sprint 4 paso 5: worker `enrich_emails.py` con interfaz `EmailFinder` + adapter primario y secundario decididos en paso 2
 - [ ] Worker `verify_emails.py` validado
 - [ ] Logs y observabilidad básica
 
@@ -1024,9 +1075,10 @@ Definidos al final de cada fase (§14).
 |---|---|---|---|
 | Dominio nuevo quemado por error en warmup | Media | Alto | Warmup externalizado (Lemwarm), 2+ semanas, rampa conservadora |
 | KB pobre → correos genéricos | Alta | Alto | Sesión inicial con Gonzalo dedicada. Iteración semanal en v1. |
-| Cobertura Hunter en sector construcción España PYME incierta hasta validación empírica | Media | Medio | Prueba con 25 empresas SABI antes de comprometer plan Starter pagado. Si hit rate <30% en construcción ES PYME, swap a `RocketReachAdapter` vía la interfaz `EmailFinder` (D17). |
-| Hunter cae / rate limit / cambio de pricing post-validación | Baja | Medio | Adapter `RocketReachAdapter` ya implementado e inactivo desde Sprint 4 (D17). Swap = cambio de feature flag, no refactor. |
-| Hunter Company Search no cubre Tier 4 sin web | Media | Bajo | Aceptar pérdida del Tier 4 en primer batch (857 empresas). Foco en T1+T2+T3 (~880). Decisión final tras la prueba experimental. |
+| Cobertura Hunter validada en 8% (decisor) sobre 25 empresas SABI (2026-05-06), por debajo del threshold 30% | Validada | Medio | Justifica probar adapters alternativos antes de comprometer plan pagado. Skrapp y Apollo en evaluación con criterio dual (decisor + any email útil según D20). Adapter primario y secundario decididos tras pruebas comparativas (D19, §14 Sprint 4 paso 2). |
+| Adapter primario cae / rate limit / cambio de pricing post-elección | Baja | Medio | Adapter secundario ya elegido en Sprint 4 paso 2 (D19). Swap = cambio de feature flag, no refactor. La interfaz abstracta `EmailFinder` (§8.6) absorbe el cambio. |
+| Cobertura email finders construcción ES PYME puede ser estructuralmente baja en sector | Media | Medio | Hunter dio 8% decisor; Skrapp y Apollo aún sin medir. Mitigaciones: (1) política de aceptación ampliada por tier (D20: T1/T3 acepta any email útil de la whitelist positiva); (2) prueba comparativa de 3 proveedores antes de comprometer plan pagado (D19). Si Skrapp y Apollo dan también <30% decisor, política T1/T3 mantiene el proyecto viable; si los any email útil totales caen <60% por tier, replantear con Gonzalo. Lección 22 captura la regla operativa. |
+| Tier 4 sin web — cobertura email finders incierta | Media | Bajo | Hunter dio 0% en T4 (commit 3c5b7a9). Pendiente medir Skrapp y Apollo. Si los tres dan 0% sin web, T4 (855 empresas) queda fuera del primer batch o se gestiona manualmente. Decisión final tras pruebas comparativas. |
 | Reply rate bajo en primer batch | Alta | Medio | Era esperable. Iteramos KB y prompts; Fase 2 es de aprendizaje. |
 | Complaint > 0.1% | Baja | Alto | Auto-pausa. Revisión humana de plantillas y opt-out flow. |
 | Gmail API rate limits | Baja | Medio | Caps conservadores; código con backoff exponencial. |
@@ -1042,18 +1094,18 @@ Definidos al final de cada fase (§14).
 | Dominio (`demingroupmadrid.com`) | ~1€/mes (~12€/año) |
 | Google Workspace (1-2 buzones)        | 6-12€ (1 buzón ahora; +1 desde día 14)   |
 | Lemwarm Essential (1-2 seats)         | 29-58€ (idem; cada seat son 29€/mes)      |
-| Hunter.io — validación inicial        | 0€ (free tier 25 búsquedas/mes para prueba sobre 25 empresas T1-T3) |
-| Hunter.io — Starter (1-2 meses puntuales) | 30-45€/mes durante el procesamiento de las ~1.000 empresas SABI accionables; cancelable después (D17) |
-| Hunter.io — régimen mantenimiento     | 0€ (free tier 25/mes basta para reposiciones puntuales tras procesar el universo SABI) |
+| Email finder — evaluación adapters    | **0€** (free tiers Hunter, Skrapp y Apollo cubren la prueba comparativa con criterio dual D20 sobre 25 empresas SABI) |
+| Email finder — adapter primario       | A determinar tras pruebas comparativas (§14 Sprint 4 paso 2). Estimación inicial 0-45€/mes durante procesamiento puntual del universo SABI (~518 empresas con `ia_fit='fit'` y dominio); cancelable después si free tier cubre mantenimiento |
+| Email finder — régimen mantenimiento  | 0€ esperable (free tier del adapter elegido cubre reposiciones puntuales tras procesar el universo SABI) |
 | Anthropic API (uso normal) | ~20-30€ |
 | Embeddings (Voyage AI) | ~2-5€ |
 | Hetzner VPS CX22 | ~5€ |
 | Vercel | 0€ (free tier) |
 | Supabase | 0€ (free tier) |
-| **Total recurrente** | **~63-115€/mes** (rango según día 1 vs día 14+, sin Hunter Starter) |
-| **Total durante procesamiento Hunter** | **~93-160€/mes** durante 1-2 meses (con Starter activo); pico puntual ~60-90€ total absorbible |
+| **Total recurrente baseline** | **~75-95€/mes** (sin adapter pagado, hasta cierre prueba comparativa Sprint 4 paso 2) |
+| **Total durante procesamiento puntual del adapter primario** | **+0-45€/mes** durante ~1 mes (depende del adapter elegido y de su pricing); pico puntual absorbible dentro del techo D15 |
 
-Tras el procesamiento inicial de Hunter (~1-2 meses), el régimen estable cae a ~110-130€/mes (free tier Hunter es suficiente para reposiciones puntuales). Sigue dentro del techo D15 de 150€/mes. Palancas si se supera durante el procesamiento Hunter: aplazar buzón warm standby más allá del día 14 (-35€/mes), o procesar Hunter en lotes de 1 mes (-30 a -45€/mes durante ese mes adicional).
+**Coste actual evaluación adapters: 0€** (free tiers Hunter + Skrapp + Apollo cubren prueba con criterio dual D20). Tras adapter primario elegido y procesamiento puntual del universo SABI, el régimen estable vuelve a la línea base ~75-95€/mes con free tier del adapter ganador para reposiciones. Sigue dentro del techo D15 (150€/mes) con margen amplio. Palancas si se supera durante el pico: aplazar buzón warm standby más allá del día 14 (-29€/mes), o procesar el adapter primario en lotes mensuales (-30 a -45€/mes durante ese mes adicional).
 
 ---
 
@@ -1070,7 +1122,9 @@ Esto NO lo construye Claude Code. Necesita coordinarse con el humano para obtene
 - [ ] Aprobación de drafts en Fase 2 (presencia diaria 15-30 min)
 - [ ] Validación de tono y mensajes tras primer batch
 - [ ] Gestión de reuniones que cierre el sistema
-- [ ] **Cuenta de Hunter.io creada por Alberto + API key generada** (Bitwarden item `demin-hunter-api-key`) + `apps/workers/.env.dev` y `.env.prod` actualizados con `HUNTER_API_KEY`. Pendiente. (Sustituye a la dependencia implícita de Apollo en D7, ahora SUPERSEDED por D17.)
+- [x] **Cuenta de Hunter.io operativa** (Bitwarden item `Hunter API`, cuenta `gonzalo.perez@demingroupmadrid.com`) + `apps/workers/.env.dev` con `HUNTER_API_KEY`. Validación experimental ejecutada 2026-05-06 (commit 3c5b7a9, VEREDICTO AMARILLO 8% decisor — ver §19).
+- [ ] **Cuenta de Skrapp.io creada por Alberto + API key generada** (Bitwarden item `Skrapp API`) + `apps/workers/.env.dev` actualizado con `SKRAPP_API_KEY`. Pendiente. (D19 — prueba comparativa Sprint 4 paso 1.)
+- [ ] **Cuenta de Apollo.io creada por Alberto + API key generada** (Bitwarden item `Apollo API`) + `apps/workers/.env.dev` actualizado con `APOLLO_API_KEY`. Pendiente. (D19 — prueba comparativa Sprint 4 paso 1.)
 
 ---
 
@@ -1398,6 +1452,46 @@ Una suposición a revisar antes de Sprint 4 — NO bloqueante, pero relevante pa
 - **No hay suposiciones tumbadas que invaliden la arquitectura de Sprint 4.** La interfaz `EmailFinder` + `HunterAdapter` + `RocketReachAdapter` sigue siendo el diseño correcto. Solo cambia el dimensionamiento de coste/calendario.
 
 **Veredicto:** No se requiere refactor de plan antes de Sprint 4. Se anotan los dos ajustes menores (1.737→1.733 y "~1.000"→518) para incorporar en la próxima sesión que toque el §8 o el §17.
+
+### 2026-05-06 — Hunter AMARILLO + RocketReach descartado + nueva política de emails por tier + pivote a Skrapp/Apollo
+
+Tras cerrar Sprint 3, la validación experimental de Hunter sobre 25 empresas SABI (5/5/5/10 por tier, sample diverso por localidad y descripción, lectura sólo de demin-prod) terminó con **VEREDICTO AMARILLO al 8% hit rate decisor** (commit 3c5b7a9). Por tier: T1=0% (5 empresas), T2=20% (1 de 5), T3=20% (1 de 5), T4=0% (10 sin web; 1 falso positivo Hunter mapeando "ONES" a "ACER"). Cuando Hunter cubría, los cargos devueltos eran exactamente decisores relevantes (Director Técnico, Project Manager, Director of Procurement) con confidence 96-99 — el problema no era ruido sino cobertura del índice. Los 8% quedan muy por debajo del threshold §16 (30%) que justificaba comprometer plan Starter pagado.
+
+**RocketReach descartado.** El plan original (D17) lo apuntaba como adapter secundario inactivo. Verificación 2026-05-06: la API de RocketReach NO está disponible en planes inferiores a Ultimate ($2.484/año, ~207€/mes), excediendo el techo D15 (150€/mes) por sí solo. No tiene sentido mantenerlo como respaldo si activarlo nos saca del presupuesto. Decisión D19 lo descarta y captura la regla en Lección 21: validar pricing y disponibilidad de API en free tier ANTES de fijar proveedor en el plan.
+
+**Política nueva de aceptación de emails por tier (D20).** El criterio "solo decisor estricto vale" (lectura inicial de D18) resulta demasiado restrictivo en B2B España PYME. Inspección manual de los 9 casos donde Hunter devolvía emails sin cargo en el sample reveló patrón claro: empresas T1 (1k-5k k€) y T3 (0.5k-1k k€), microempresas o muy pequeñas, tienen `info@`, `contacto@` y `gerencia@` leídos directamente por el gerente sin filtro humano intermedio — NO son buzones desatendidos, son la vía estándar de contacto en empresas de 1-10 empleados. Empresas T2 (5k-20k k€) sí tienen filtros administrativos: ahí mantenemos exigencia de decisor o nominal con cargo identificable.
+
+Política aplicada (D20):
+
+- **T1 y T3:** decisor (cargo claro: gerente / director / responsable) + nominal (`nombre.apellido@` con cargo no claro) + corporativo_pequeno (whitelist positiva por prefijo: `info@`, `contacto@`, `hola@`, `gerencia@`, `obras@`, `proyectos@`, `comercial@`, `direccion@`, `oficina@`, `administracion@`).
+- **T2:** decisor o nominal con cargo identificable. Sin nominal ni decisor → fallback humano (cola "decisor manual" para Gonzalo).
+- **T4:** decisión pendiente tras prueba comparativa.
+- **Whitelist negativa global (todos los tiers):** `marketing@`, `rrhh@`, `prensa@`, `comunicacion@`, `noreply@`, `facturas@`, `contabilidad@`, `webmaster@`, `soporte@` se descartan siempre.
+
+**Pivote a Skrapp y Apollo** (D19). Antes de comprometer plan pagado, prueba comparativa de los tres proveedores sobre el mismo sample de 25 empresas SABI con **criterio dual** (decisor + any email útil según D20). Free tiers de los tres cubren la prueba — coste 0€. Adapter primario y secundario se deciden tras tener los 3 hit rates comparables. Captura adicional como Lección 22: hit rate de email finders en construcción ES PYME puede ser estructuralmente bajo, regla operativa = probar 2-3 adapters antes de comprometer plan pagado.
+
+**Cambios aplicados en este commit (sin código, sin migration SQL, sin prompts completos):**
+
+- §3 — D17 marcada SUPERSEDED por D19. Añadidas D19 (descarte RocketReach, pivote a Skrapp/Apollo) y D20 (política emails por tier).
+- §4 — fila "Hunter primario / RocketReach secundario" sustituida por dos filas en evaluación.
+- §6.1 — `contacts.email_source` lista revisada (`rocketreach` fuera, `skrapp` dentro). Añadidas columnas `email_type` (enum decisor / nominal / corporativo_pequeno / descartado) y `email_priority` (1-4) como pendientes para migration al arrancar Sprint 4.
+- §8.5 — renombrado a "Búsqueda de contactos via email finder". Política jerárquica decisor > nominal > corporativo_pequeno (T1/T3) > fallback humano (T2). Whitelists positivas y negativas explícitas. Worker renombrado de `find_decisors_hunter.py` a `find_contacts.py`.
+- §8.6 — interfaz `EmailFinder` se mantiene; adapters concretos (primario/secundario) pendientes hasta cierre prueba comparativa. Métodos del Protocol renombrados de `find_decisors_*` a `find_contacts_*`.
+- §10.2 — añadida regla "Variantes por `email_type`": el prompt de redacción adapta apertura/llamada al destinatario según `contacts.email_type`. SIN escribir el prompt completo en este commit. Implementación pendiente Sprint 4 o 5 según orden final.
+- §14 Sprint 4 — primer paso es prueba comparativa Skrapp + Apollo (free tier, 0€) con métricas duales. Solo tras comparar los 3 hit rates se decide adapter primario y se implementa el flujo productivo.
+- §16 — riesgo Hunter actualizado de "incierta" a "validada AMARILLO 8%". Riesgo nuevo: cobertura email finders construcción ES estructuralmente baja, mitigado por D20 + 3 proveedores en evaluación. Riesgo RocketReach eliminado.
+- §17 — Hunter Starter quitado del coste recurrente. Vuelve a línea base ~75-95€/mes hasta adapter primario. Coste evaluación adapters: 0€.
+- §18 — añadidas dependencias humanas Skrapp y Apollo (cuentas + API keys). Hunter marcada como operativa.
+
+**Pendientes que NO entran en este commit y se ejecutan en Sprint 4 o posterior:**
+
+- Migration SQL de `contacts.email_source` ampliado (skrapp añadido, rocketreach eliminado) + nuevas columnas `email_type` y `email_priority` con CHECK constraints. Migration al arrancar Sprint 4.
+- Variante por `email_type` en el prompt de redacción §10.2 (apertura/llamada al destinatario adaptada). Implementación en Sprint 4 o 5.
+- Pruebas comparativas Skrapp + Apollo sobre el mismo sample 25 empresas con criterio dual D20.
+- Decisión final de adapter primario + secundario tras pruebas.
+- Resolución T4 (gestión manual o fuera del primer batch) según outcome de pruebas.
+
+**Lecciones nuevas registradas en `tasks/lessons.md`:** 21 (validar pricing y API en free tier antes de fijar proveedor — RocketReach gateado a Ultimate gatilló la regla), 22 (hit rate email finders construcción ES PYME estructuralmente bajo — probar 2-3 antes de comprometer plan pagado), 23 (criterio "solo decisor vale" demasiado restrictivo en B2B PYME ES — política segmentada por tier con whitelist por prefijo).
 
 ---
 
