@@ -1048,7 +1048,7 @@ Eso es v2 si tiene sentido, no antes.
 
 **Sprint 4 productivo — orden fijo D22 (T3 primero, T2 después).** Sprint puente Fase 1 → Fase 2: pasos 1-6 cierran Fase 1, pasos 7-8 son operativamente Fase 2 (envío real cap 10/día), paso 9 revisión post-Sprint.
 
-- [ ] **Paso 1: migration BD** — `contacts.email_source` revisado + nuevas columnas `email_type` y `email_priority` (D19, D20, §6.1).
+- [x] **Paso 1: migration BD** — `contacts.email_source` revisado + nuevas columnas `email_type` y `email_priority` (D19, D20, §6.1). Migration `20260506120000_09_*.sql` aplicada en dev y prod 2026-05-06 (commit 8bdbf2e), verificada con 36 tests en dev (schema + aceptación + rechazo de los tres CHECKs).
 - [ ] **Paso 2: `apps/workers/shared/email_policy.py`** — whitelists positiva/negativa + patrones decisor/nominal/descartado-por-rol + función de clasificación reusada del script `reanalyze_hunter_d20.py` (commit 36d5077).
 - [ ] **Paso 3: `HunterAdapter`** implementación concreta de la interfaz `EmailFinder` (§8.6, D21). `SkrappAdapter`/`ApolloAdapter`/`RocketReachAdapter` como stubs vacíos cumpliendo el `Protocol`.
 - [ ] **Paso 4: `find_contacts.py`** con la lógica de §8.5 + cruce con `research_data.personas_extraidas` (D21) para enriquecer T2.
