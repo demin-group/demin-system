@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     VOYAGE_MODEL: str = "voyage-multilingual-2"
     VOYAGE_EMBEDDING_DIM: int = 1024
 
+    # Hunter.io — opcional. Solo lo consume `scripts/probe_hunter.py` durante
+    # la validación experimental previa a Sprint 4 (D17, §8.5, §16) y, más
+    # adelante, `find_decisors_hunter.py`. Manteniéndolo opcional, los demás
+    # workers no rompen si no está rellenado en un entorno (p. ej. .env.prod
+    # mientras dure la prueba en dev).
+    HUNTER_API_KEY: str | None = None
+    HUNTER_BASE_URL: str = "https://api.hunter.io/v2/"
+
     LOG_LEVEL: str = "INFO"
 
     model_config = SettingsConfigDict(

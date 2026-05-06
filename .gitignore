@@ -73,3 +73,6 @@ supabase/.temp/
 # ---- Documentos confidenciales (NO commitear) ----
 docs/onboarding_demin.pdf
 docs/*_confidencial*.pdf
+
+# ---- Salidas exploratorias (PII real: emails, nombres) ----
+apps/workers/scripts/probe_hunter_output/
