@@ -183,29 +183,34 @@ demin-system/
 │   │   └── package.json
 │   └── workers/                      # Python (despliegue Hetzner)
 │       ├── pipeline/
-│       │   ├── ingest_sabi.py        # Carga el Excel
-│       │   ├── classify_descr.py     # Filtro IA por descripción
-│       │   ├── research_prospect.py  # Scrapeo + extracción IA
-│       │   ├── scrape_emails.py      # info@/contacto@ desde web
-│       │   ├── apollo_enrich.py      # API de Apollo para Tier 4
-│       │   └── verify_emails.py      # MX + SMTP check
+│       │   ├── ingest_sabi.py        # Carga el Excel (Sprint 2 paso 1)
+│       │   ├── classify_descr.py     # Filtro IA por descripción (Sprint 3)
+│       │   ├── research_prospect.py  # PENDIENTE Sprint 4 paso 4b — función dual D21 (dossier + personas_extraidas)
+│       │   ├── find_contacts.py      # PENDIENTE Sprint 4 paso 4 — email finder D21 + cruce personas_extraidas
+│       │   ├── enrich_emails.py      # PENDIENTE Sprint 4 paso 3 — interfaz EmailFinder + HunterAdapter (D21)
+│       │   ├── verify_emails.py      # PENDIENTE Sprint 4 — MX + SMTP check
+│       │   ├── scrape_emails.py      # STUB histórico descartado (D17 → D19 → D21)
+│       │   └── apollo_enrich.py      # STUB histórico descartado (D7 → D17 → D19 → D21)
 │       ├── outreach/
-│       │   ├── generate_draft.py     # Genera correo personalizado
-│       │   ├── send_gmail.py
-│       │   └── follow_ups.py         # Programador D4 / D10 / re-engage
+│       │   ├── generate_draft.py     # PENDIENTE Sprint 4 paso 5 / Fase 2
+│       │   ├── send_gmail.py         # PENDIENTE Fase 2 (envío real)
+│       │   └── follow_ups.py         # PENDIENTE Fase 2 (Programador D4 / D10 / re-engage)
 │       ├── replies/
-│       │   ├── poll_imap.py
-│       │   ├── classify_replies.py
-│       │   └── handle_actions.py     # Acción por categoría
+│       │   ├── poll_imap.py          # PENDIENTE Fase 3
+│       │   ├── classify_replies.py   # PENDIENTE Fase 3
+│       │   └── handle_actions.py     # PENDIENTE Fase 3 (acción por categoría)
 │       ├── monitoring/
-│       │   └── auto_pause.py         # Bounce >2%, spam >0.1%
+│       │   └── auto_pause.py         # PENDIENTE Fase 3 (bounce >2%, spam >0.1%)
 │       ├── kb/
-│       │   └── embed_documents.py    # Pipeline de embeddings
+│       │   └── embed_documents.py    # Pipeline de embeddings (Sprint 1 paso 2)
 │       └── shared/
-│           ├── db.py                 # SQLAlchemy
-│           ├── llm.py                # Cliente Anthropic
-│           ├── prompts/              # Carpeta con todos los prompts
-│           └── config.py
+│           ├── db.py                 # SQLAlchemy (Sprint 1 paso 1)
+│           ├── llm.py                # Cliente Anthropic + Voyage (Sprint 1 paso 1)
+│           ├── config.py             # pydantic-settings dev/prod (Sprint 1 paso 1)
+│           ├── email_policy.py       # PENDIENTE Sprint 4 paso 2 — whitelists D20 + clasificador
+│           └── prompts/              # Prompts versionados (regla 8 Apéndice A)
+│               ├── classify_fit.md   # Sprint 3
+│               └── generate_email_*  # PENDIENTE Sprint 4 paso 5 — opening/reframe/closing
 ├── infra/
 │   ├── supabase/migrations/          # SQL de schema
 │   └── systemd/                      # Worker units
@@ -990,20 +995,22 @@ Eso es v2 si tiene sentido, no antes.
 
 ## 14. Fases de construcción
 
-### Fase 0 — Setup (semana 1)
+> **Estado actual 2026-05-06:** Fase 1 abierta, Sprint 4 a punto de arrancar paso 1. Sprint 4 cruza la línea Fase 1 → Fase 2 (pasos 1-6 cierran cierre técnico de Fase 1, pasos 7-8 abren Fase 2 con roll-out productivo cap 10/día, paso 9 revisión post-Sprint según Lección 19). El plan §14 se mantiene en cuatro Fases — el cruce se documenta en cada Fase pero no se renumera.
+
+### Fase 0 — Setup (semana 1) — ✅ CERRADA salvo Gmail OAuth (espera Fase 2)
 
 **Infra básica:**
 - [x] Comprar dominio `demingroupmadrid.com` (Namecheap, expira 29/04/2027, auto-renew ON)
-- [ ] Crear Google Workspace con 3 buzones
-- [ ] Configurar SPF, DKIM, DMARC en DNS
-- [ ] Activar APIs de Gmail en Google Cloud Console + crear OAuth client
-- [ ] Crear cuenta de Supabase + proyecto
-- [ ] Crear cuenta de Vercel + conectar a GitHub
-- [ ] Crear cuenta de Anthropic + API key
-- [ ] Decidir embeddings (Voyage o OpenAI) + crear cuenta
-- [ ] Conectar buzones a Lemwarm + iniciar warmup (mínimo 2 semanas)
-- [ ] Inicializar repo con la estructura de §5
-- [ ] Crear `.env.example` con todas las variables esperadas (sin valores)
+- [-] ~~Crear Google Workspace con 3 buzones~~ — **sustituido**: 1 buzón `gonzalo.perez@demingroupmadrid.com` activo + warm standby día 14 (Lección 4, §19 cierre Bloque A 2026-04-29)
+- [x] Configurar SPF, DKIM, DMARC en DNS — Bloque A 2026-04-29, "DNS en verde"
+- [ ] Activar APIs de Gmail en Google Cloud Console + crear OAuth client — **legítimamente pendiente** Fase 2 (envío real)
+- [x] Crear cuenta de Supabase + proyecto — `demin-dev` (`oribmklyxzhpqcpmqsce`) y `demin-prod` (`stxicalzpwrcjpaqdkdb`) operativos
+- [x] Crear cuenta de Vercel + conectar a GitHub — `demingroupmadrid.com` desplegado 2026-05-04
+- [x] Crear cuenta de Anthropic + API key — Sprint 3 consumió $3.90 reales
+- [x] Decidir embeddings (Voyage o OpenAI) + crear cuenta — **Voyage** `voyage-multilingual-2`, KB indexado en BD
+- [x] Conectar buzones a Lemwarm + iniciar warmup — Lemwarm Essential 29€/mes activado 2026-04-29
+- [x] Inicializar repo con la estructura de §5 — `demin-group/demin-system` público (Lección 12)
+- [x] Crear `.env.example` con todas las variables esperadas — `apps/workers/.env.example` + `apps/web/.env.example` versionados
 
 **Web pública (en paralelo, §13):** ✅ Bloque C CERRADO 2026-05-04
 - [x] Inicializar `apps/web/` con Next.js 15 + Tailwind
@@ -1017,44 +1024,52 @@ Eso es v2 si tiene sentido, no antes.
 **Contenido:**
 - [x] Sesión con Gonzalo (60-90 min) para producir el contenido inicial del KB (§7.1) — sesión 1 cargada 2026-04-29 + sesión 2 enriquecimiento 2026-05-04 (commits 768b915 y 6aa9da4)
 - [ ] Exportar correos reales de Gonzalo (5-10) para `kb_documents.correos_gonzalo` — **STANDBY PERMANENTE** (Lección 11): los correos archivados aportados son plantilla SaaS genérica, no voz auténtica. Doc 7 no se construye salvo que Gonzalo aporte material espontáneo distinto. Las 7 frases gatillo derivadas de las respuestas reales de prospectos sí se aplicaron a `tasks/kb_objeciones_v1.json`.
-- [ ] Subir Excel de Sabi y los PDFs originales a `docs/`
+- [x] Subir Excel de Sabi y los PDFs originales a `docs/` — `docs/sabi_export.xlsx` + dossier original presentes
 
 **Criterio de salida Fase 0:** dominio activo con web pública desplegada y formulario funcional, buzones en warmup, repo inicializado con docs, KB con contenido de Gonzalo en bruto (Markdown plano, antes de embedding).
 
-### Fase 1 — Pipeline + KB + dashboard mínimo (semanas 2-3)
+### Fase 1 — Pipeline + KB + dashboard mínimo (semanas 2-3) — EN CURSO
+
+**Items productivos — completados:**
 
 - [x] Schema de BD aplicado (migrations §6) — 01-08 aplicadas en dev y prod (Sprint 1)
 - [x] Worker `ingest_sabi.py` carga el Excel a `companies` con tier asignado — 5.578 NIFs únicos en dev y prod (Sprint 2 paso 1)
 - [x] Worker `classify_descr.py` corre sobre los 1.733 accionables — Haiku, 0 fallbacks API tras retries, $3.90 total acumulado (Sprint 3, dev+prod 2026-05-04 → 2026-05-06)
 - [x] Worker `embed_documents.py` indexa el KB — 6 docs / 27 chunks en dev y prod (Sprint 1 paso 2)
 - [x] Pantalla "KB editor" funcional (CRUD) — con re-embed inline al guardar (Sprint 1 paso 4)
-- [ ] Pantalla "Pipeline" funcional (read-only)
 - [x] Auth con magic link — operativa desde Bloque B3 (pre-Sprint 1)
-- [ ] Worker `research_prospect.py` ejecutado sobre los `ia_fit='fit'` con web (~5€)
-- [x] Validación experimental Hunter sobre 25 empresas SABI — VEREDICTO AMARILLO 8% decisor estricto (commit 3c5b7a9, 2026-05-06)
-- [x] Frente D Apollo descartado — people endpoints gated en Free (Lección 21, sesión 2026-05-06, sin commit)
-- [x] Frente E reanálisis Hunter+D20 — T3=80% production-ready, T1/T2/T4 sin cobertura útil (commit 36d5077, 2026-05-06)
-- [x] Decisión arquitectura híbrida por tier D21 + roll-out escalonado D22 (commit del refactor del plan 2026-05-06)
 
-**Sprint 4 productivo — orden fijo D22 (T3 primero, T2 después):**
+**Investigación previa Sprint 4 (cerrada — sesión 2026-05-06):**
+
+- [x] Validación experimental Hunter sobre 25 empresas SABI — VEREDICTO AMARILLO 8% decisor estricto (commit 3c5b7a9)
+- [x] Frente D Apollo descartado — people endpoints gated en Free (Lección 21, sin commit, rollback limpio)
+- [x] Frente E reanálisis Hunter+D20 — T3=80% production-ready, T1/T2/T4 sin cobertura útil (commit 36d5077)
+- [x] Decisión arquitectura híbrida por tier D21 + roll-out escalonado D22 (commit ed6f593, refactor §8 + Lecciones 24/25/26/27)
+
+**Sprint 4 productivo — orden fijo D22 (T3 primero, T2 después).** Sprint puente Fase 1 → Fase 2: pasos 1-6 cierran Fase 1, pasos 7-8 son operativamente Fase 2 (envío real cap 10/día), paso 9 revisión post-Sprint.
 
 - [ ] **Paso 1: migration BD** — `contacts.email_source` revisado + nuevas columnas `email_type` y `email_priority` (D19, D20, §6.1).
 - [ ] **Paso 2: `apps/workers/shared/email_policy.py`** — whitelists positiva/negativa + patrones decisor/nominal/descartado-por-rol + función de clasificación reusada del script `reanalyze_hunter_d20.py` (commit 36d5077).
 - [ ] **Paso 3: `HunterAdapter`** implementación concreta de la interfaz `EmailFinder` (§8.6, D21). `SkrappAdapter`/`ApolloAdapter`/`RocketReachAdapter` como stubs vacíos cumpliendo el `Protocol`.
 - [ ] **Paso 4: `find_contacts.py`** con la lógica de §8.5 + cruce con `research_data.personas_extraidas` (D21) para enriquecer T2.
-- [ ] **Paso 4b: `research_prospect.py` expandido** — JSON output con `personas_extraidas: [{nombre, cargo_si_aparece, fuente_url}]` además del dossier de personalización (§8.4 función dual D21).
+- [ ] **Paso 4b: `research_prospect.py` función dual (D21)** — dossier de personalización (D10 original, alimenta §10.2) + JSON output con `personas_extraidas: [{nombre, cargo_si_aparece, fuente_url}]` para enriquecer cargos T2 (§8.4). Ejecuta sobre los `ia_fit='fit'` con web (~5€).
 - [ ] **Paso 5: prompts** `generate_email_{opening,reframe,closing}.md` en `apps/workers/shared/prompts/` con bloque condicional por `email_type` (decisor/nominal/corporativo_pequeno, §10.2).
 - [ ] **Paso 6: validación E2E** sobre 5 empresas T3 reales (NO las 25 del Frente C — otras 5 al azar entre los `ia_fit='fit'` de prod) en HITL completo: research → find_contacts → generate_draft → cola aprobación.
-- [ ] **Paso 7: roll-out Semana 1** — solo T3 a cap 10/día, monitoring bounce/spam/reply. Si bounce >2% o spam >0.1% en cualquier momento, parar y revisar antes de paso 8.
-- [ ] **Paso 8: roll-out Semana 2-3** — añadir T2 con `personas_extraidas` enriqueciendo cargos. Validar que el hit rate efectivo sube de 20% (Frente E) a 50-60% (estimado D21). Si no sube, parar y revisar `personas_extraidas` antes de continuar.
+- [ ] **Paso 7: roll-out Semana 1 [cruza a Fase 2]** — solo T3 a cap 10/día con envío real Gmail API, monitoring bounce/spam/reply. Si bounce >2% o spam >0.1% en cualquier momento, parar y revisar antes de paso 8.
+- [ ] **Paso 8: roll-out Semana 2-3 [Fase 2]** — añadir T2 con `personas_extraidas` enriqueciendo cargos. Validar que el hit rate efectivo sube de 20% (Frente E) a 50-60% (estimado D21). Si no sube, parar y revisar `personas_extraidas` antes de continuar.
 - [ ] **Paso 9: cierre Sprint 4** — métricas reales de Semana 1+2-3, revisión post-Sprint Lección 19 (¿alguna decisión §3 invalidada? ¿§8 sigue alineado? ¿Sprint 5 con Opción C tiene suposiciones tumbadas?), entrada §19, decisión go/no-go Sprint 5.
-- [ ] Worker `verify_emails.py` validado (cualquier paso del Sprint 4 lo activa)
-- [ ] Logs y observabilidad básica
-- [ ] Pantalla "Pipeline" funcional (read-only) — pre-requisito UX de Sprint 4 paso 7 para Gonzalo
 
-**Criterio de salida Fase 1:** lista de ~400-500 leads cualificados, con email verificado, dossier de research, listos para campaña. Dashboard muestra el pipeline. KB indexado y editable.
+**Items productivos transversales al Sprint 4 (no atados a un paso concreto):**
+
+- [ ] Worker `verify_emails.py` validado — se activa al insertar el primer `contact` con email no verificado (Sprint 4 paso 4 en adelante)
+- [ ] Logs y observabilidad básica
+- [ ] Pantalla "Pipeline" funcional (read-only) — pre-requisito UX de Sprint 4 paso 6/7 para que Gonzalo audite leads + research + contactos
+
+**Criterio de salida Fase 1:** lista de ~400-500 leads cualificados, con email verificado, dossier de research, listos para campaña. Dashboard muestra el pipeline. KB indexado y editable. **Estado actual 2026-05-06: contacts=0, messages=0, pantalla pipeline scaffold. Cierre técnico llega al cumplir Sprint 4 paso 6 (validación E2E sobre 5 T3 reales).**
 
 ### Fase 2 — Generación IA + envío + cola HITL (semana 4)
+
+> **Nota:** el roll-out productivo arranca DENTRO del Sprint 4 D22 (paso 7 Semana 1 solo T3, paso 8 Semana 2-3 añadir T2). Los items abajo se reparten entre Sprint 4 (lo mínimo para el envío T3+T2: prompts §10.2, generate_draft, Gmail API + OAuth, jitter/horario/caps, cola HITL teclado-friendly, plantilla pie con opt-out, test E2E 10 leads) y Sprint 5 si se necesita ampliar (T1+T4 con Opción C). Cuando arranque Sprint 4 paso 7, los `[ ]` de abajo que no estén cubiertos se priorizan o se difieren explícitamente.
 
 - [ ] Prompts `generate_email_{opening,reframe,closing}.md` en repo
 - [ ] Worker `generate_draft.py` con retrieval del KB
