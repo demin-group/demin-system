@@ -944,8 +944,8 @@ Eso es v2 si tiene sentido, no antes.
 ### Fase 1 — Pipeline + KB + dashboard mínimo (semanas 2-3)
 
 - [x] Schema de BD aplicado (migrations §6) — 01-08 aplicadas en dev y prod (Sprint 1)
-- [ ] Worker `ingest_sabi.py` carga el Excel a `companies` con tier asignado
-- [ ] Worker `classify_descr.py` corre sobre los 1.737 (~2€)
+- [x] Worker `ingest_sabi.py` carga el Excel a `companies` con tier asignado — 5.578 NIFs únicos en dev y prod (Sprint 2 paso 1)
+- [x] Worker `classify_descr.py` corre sobre los 1.733 accionables — Haiku, 0 fallbacks API tras retries, $3.90 total acumulado (Sprint 3, dev+prod 2026-05-04 → 2026-05-06)
 - [x] Worker `embed_documents.py` indexa el KB — 6 docs / 27 chunks en dev y prod (Sprint 1 paso 2)
 - [x] Pantalla "KB editor" funcional (CRUD) — con re-embed inline al guardar (Sprint 1 paso 4)
 - [ ] Pantalla "Pipeline" funcional (read-only)
@@ -1342,6 +1342,62 @@ Fase 1 NO se cierra hasta que el Sprint 2 entregue la lista cualificada de ~400-
 - §18 — añadida dependencia humana "Cuenta Hunter.io + API key + .env actualizados".
 
 **Lección capturada:** Lección 19 en `tasks/lessons.md` — al cerrar cada Sprint, antes de arrancar el siguiente, revisar §8/§14 del plan contra lo aprendido y las decisiones acumuladas. Si hay desfase, refactor de plan ANTES de código. Aplicado aquí post-Sprint 2 paso 1 cuando el desfase debió detectarse al cierre de Sprint 1.
+
+### 2026-05-06 — Cierre Sprint 3: classify_descr en dev y prod
+
+`apps/workers/pipeline/classify_descr.py` aplicado a las 1.733 empresas accionables T1-T4 en ambos entornos. Worker idempotente (filtro `ia_fit='pendiente'`) con ThreadPoolExecutor configurable, validación post-LLM tolerante a code fences, fallback a `dudoso` con `ia_fit_reason` explicando el fallo si el LLM da output inválido o si la API falla tras retries de tenacity. Prompt versionado en `shared/prompts/classify_fit.md` (regla 8) recoge §8.3 + las 3 exclusiones operativas de Gonzalo (Lección 9 punto 3): obras públicas, demoliciones de fachadas, plantilla > 20 personas.
+
+**Distribución final (1.733 accionables, ambos entornos):**
+
+| categoría | dev | prod |
+|---|---|---|
+| `fit` | 520 (30.0%) | 518 (29.9%) |
+| `no_fit` | 776 (44.8%) | 780 (45.0%) |
+| `dudoso` | 437 (25.2%) | 435 (25.1%) |
+| pendiente | 0 | 0 |
+| fallback API | 0 | 0 |
+
+Diferencia inter-entorno <0.2pp por categoría — Haiku 4.5 da resultados consistentes contra el mismo prompt sobre el mismo universo. Distribución sana por criterio del smoke (3 categorías presentes, ningún extremo, fallbacks API a cero tras retries).
+
+**Coste real:** $3.90 USD acumulado (cap configurado a $5). Plan §8.3 estimaba $2 — la desviación viene de los reintentos de las filas que cayeron por `RateLimitError 429` durante la primera pasada en dev del 2026-05-04 (8 workers paralelos saturaron el rate limit del tier inicial; los retries con 2 workers funcionaron limpios). El cap no se alcanzó pero queda como dato calibrado para futuras estimaciones.
+
+**Calibración operativa adquirida:**
+
+- Concurrencia segura para Anthropic en este tier de cuenta: **2 workers paralelos**. Con 8 workers la primera pasada del 2026-05-04 generó 506 RateLimitError 429 sobre 1.680 (30% fallback). Con 2 workers todas las pasadas posteriores (156 dev + 1.733 prod + 19 retries) terminaron con 0 errores API. Tiempo de procesamiento aceptable: ~33 min para 1.733 con 2 workers.
+- Tiempo de respuesta promedio Haiku en este tier: ~1.1s por llamada con prompt de ~860 tokens input + ~50 tokens output.
+
+**5 commits del Sprint 3 (en orden cronológico):**
+
+| hash | mensaje |
+|---|---|
+| `74a459a` | feat(workers/pipeline): classify_descr.py + prompt classify_fit.md (smoke verde en dev, full run pendiente por inestabilidad Anthropic 2026-05-04) |
+| `<commit cierre>` | docs(tasks): cierre Sprint 3 + revisión post-Sprint según Lección 19 |
+
+(El cierre cuenta como un commit añadido a este §19; el hash exacto se rellena tras crear el commit final.)
+
+#### Revisión de plan post-Sprint (trigger Lección 19)
+
+**1. ¿Hay alguna decisión §3 invalidada por lo aprendido en Sprint 3?**
+
+No. Las decisiones D1-D18 siguen vigentes. La D6 (filtrado por reglas tier T1-T4 + clasificador IA por descripción) se confirma con datos reales: el clasificador IA es necesario y útil (descarta 44.8% del universo accionable que no encaja en el ICP de DEMIN). La D14 (aprendizaje manual en v1) se mantiene: las 437 dudosos de prod son candidatos a revisión humana en futuras sesiones con Gonzalo, no a re-clasificación automática.
+
+**2. ¿§8 sigue alineado con la realidad o necesita refactor?**
+
+Alineado en lo esencial. Tres ajustes menores que NO bloquean Sprint 4:
+
+- §8.3 menciona "1.737 accionables" — el universo real tras el dedup SABI (Lección 18) son **1.733**. La cifra 1.737 sigue mencionada en §8.2 como salida de las reglas de tier sobre el Excel pre-dedup. Coherente, pero conviene unificar en una próxima pasada.
+- §8.3 estima coste de Haiku en $0.001 × 1.737 = ~$2 — el coste real fue $3.90 (factor 2x) por reintentos de rate limits. El plan está dentro del techo D15 con margen pero la estimación literal está infraponderada. Conviene anotar "$2-4 con reintentos" en la próxima sesión que toque §8.3.
+- §8.5 (Hunter Domain Search) planeaba procesar "~1.000 empresas SABI accionables" para dimensionar el plan Hunter Starter. El número real de `ia_fit='fit'` con web es **518 en prod**, ~la mitad de lo asumido. Ver punto 3 abajo.
+
+**3. ¿Sprint 4 (find_decisors_hunter + enrich_emails) tiene suposiciones tumbadas por lo visto en Sprint 3?**
+
+Una suposición a revisar antes de Sprint 4 — NO bloqueante, pero relevante para el dimensionamiento:
+
+- **El universo `ia_fit='fit'` con dominio web es ~518, no ~1.000.** El plan §17 dimensionó Hunter Starter a 30-45€/mes durante 1-2 meses para procesar "~1.000 empresas". Con 518 empresas, la free tier de Hunter (25 búsquedas/mes) tarda ~21 meses en cubrirlas y el Starter (típicamente 500 búsquedas/mes) las cubre en **1 mes** (no 1-2). Esto reduce el coste total puntual del procesamiento de Hunter de 60-90€ a 30-45€ (1 mes), y abre la posibilidad de que la free tier baste si el procesamiento se planifica en 2 lotes mensuales. Decisión a tomar antes de comprometer Starter.
+- **Los 437 dudosos** (con descripción ambigua o tautológica) NO entran al pipeline de Hunter por el filtro `ia_fit='fit'`. Son leads potencialmente perdidos. Tres opciones: (a) ignorar, (b) revisar con Sonnet 4.6 para mejor discriminación (coste ~$10), (c) muestrear manualmente con Gonzalo. Decisión humana, no urgente para Sprint 4.
+- **No hay suposiciones tumbadas que invaliden la arquitectura de Sprint 4.** La interfaz `EmailFinder` + `HunterAdapter` + `RocketReachAdapter` sigue siendo el diseño correcto. Solo cambia el dimensionamiento de coste/calendario.
+
+**Veredicto:** No se requiere refactor de plan antes de Sprint 4. Se anotan los dos ajustes menores (1.737→1.733 y "~1.000"→518) para incorporar en la próxima sesión que toque el §8 o el §17.
 
 ---
 
