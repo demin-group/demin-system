@@ -1487,7 +1487,7 @@ Diferencia inter-entorno <0.2pp por categoría — Haiku 4.5 da resultados consi
 | hash | mensaje |
 |---|---|
 | `74a459a` | feat(workers/pipeline): classify_descr.py + prompt classify_fit.md (smoke verde en dev, full run pendiente por inestabilidad Anthropic 2026-05-04) |
-| `<commit cierre>` | docs(tasks): cierre Sprint 3 + revisión post-Sprint según Lección 19 |
+| `9cddde4` | docs(tasks): cierre Sprint 3 + revisión post-Sprint según Lección 19 |
 
 (El cierre cuenta como un commit añadido a este §19; el hash exacto se rellena tras crear el commit final.)
 

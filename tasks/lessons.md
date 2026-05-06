@@ -2,6 +2,8 @@
 
 > Aquí se registran patrones que hemos aprendido tras correcciones humanas o errores. La idea es no repetirlos. Claude Code lee este archivo al inicio de cada sesión.
 
+> **Convención de fechas:** la fecha en la cabecera de cada Lección N es la **fecha del evento documentado**, NO la fecha de captura en el archivo. Por eso una Lección con fecha posterior puede aparecer físicamente antes que otra con fecha anterior (ej. Lecciones 7-8 con fecha 2026-05-01 aparecen antes que Lecciones 9-10 con fecha 2026-04-29 — las 9-10 se añadieron en sesión posterior pero documentan eventos anteriores). El orden lineal del archivo es siempre por número de Lección.
+
 ---
 
 ## 2026-04-29 — Lección 1: un "no" del prospecto NO es definitivo
@@ -551,6 +553,18 @@ entrevista verbalizada tampoco era buen tono y hay que recalibrar
 - **Aplicación generalizable más allá de Sprints**: la misma rutina aplica a cierres de Bloque, Fase y release v1 → v2. La cadencia de refactor de plan es proporcional al ritmo de aprendizaje del proyecto.
 
 **Aplicado en:** `tasks/todo.md` 2026-05-04, refactor §8 + decisiones D16/D17/D18 + actualización §4/§6.1/§14/§16/§17/§18 + entrada §19 "Refactor a modelo híbrido SABI-first + Hunter como email finder". El trigger explícito (sub-bloque "Revisión de plan post-Sprint" en cada futura entrada §19 de cierre de Sprint) entra en vigor desde el próximo cierre de Sprint.
+
+---
+
+## 2026-05-06 — Lección 20: número saltado por error de numeración
+
+Hueco intencional documentado. El refactor §8 + Lecciones 21/22/23 (commit `794b0db`, 2026-05-06) saltó del número 19 directamente al 21. Probablemente confusión con la decisión D20 que se añadió en el mismo commit. Sin referencias rotas a "Lección 20" en el repo (auditoría posterior commit pendiente).
+
+No se renumera el resto (21→20, 22→21, …) para no invalidar las ~12 referencias externas a Lecciones 21-27 que ya viven en `tasks/todo.md`, `tasks/lessons.md` (auto-referencias internas) y entradas §19 que NO se reescriben.
+
+**Regla resultante:** al añadir lecciones nuevas, verificar el último número usado con `grep '^## .*Lecci[oó]n \d+' tasks/lessons.md` antes de elegir el siguiente. La decisión D-N y la Lección N pueden coincidir en una misma sesión sin que sean lo mismo — son dos series numéricas independientes.
+
+**Aplicado en:** este placeholder. La regla pasa a aplicarse desde la próxima Lección que se añada (Lección 28 cuando llegue).
 
 ---
 
