@@ -1051,7 +1051,7 @@ Eso es v2 si tiene sentido, no antes.
 - [x] **Paso 1: migration BD** — `contacts.email_source` revisado + nuevas columnas `email_type` y `email_priority` (D19, D20, §6.1). Migration `20260506120000_09_*.sql` aplicada en dev y prod 2026-05-06 (commit 8bdbf2e), verificada con 36 tests en dev (schema + aceptación + rechazo de los tres CHECKs).
 - [x] **Paso 2: `apps/workers/shared/email_policy.py`** — whitelists positiva/negativa + patrones decisor/nominal/descartado-por-rol + función de clasificación reusada del script `reanalyze_hunter_d20.py` (commit 36d5077). Implementado 2026-05-06 (commit e693f66) con whitelist negativa de 17 prefijos del plan §8.5 (supersede los 12 del script). 128 tests pasan (parametrizados sobre whitelists, decisores, roles negativos, A3 híbrido, normalización, edge cases). El script de exploración queda intacto como audit trail del Frente E.
 - [x] **Paso 3: `HunterAdapter`** implementación concreta de la interfaz `EmailFinder` (§8.6, D21). `SkrappAdapter`/`ApolloAdapter`/`RocketReachAdapter` como stubs vacíos cumpliendo el `Protocol`. Implementado 2026-05-06 (commit af60296). `shared/email_finder.py` (Protocol + Contact + 3 stubs) y `shared/hunter_adapter.py` (Domain Search + Email Finder con tenacity retry sobre 429/5xx/timeout, 401→HunterAuthError sin retry, 400/404→[]). 42 tests con httpx.MockTransport (170 totales, sin créditos Hunter consumidos).
-- [ ] **Paso 4: `find_contacts.py`** con la lógica de §8.5 + cruce con `research_data.personas_extraidas` (D21) para enriquecer T2.
+- [x] **Paso 4: `find_contacts.py`** con la lógica de §8.5 + cruce con `research_data.personas_extraidas` (D21) para enriquecer T2. Implementado 2026-05-06 (commit 56289aa). `apps/workers/pipeline/find_contacts.py` (449 líneas) — sequential, cap defensivo `--max-hunter-calls 20` (Free 25/mes), idempotente con `NOT EXISTS` + `ON CONFLICT DO NOTHING`, T1/T4 sin web fallback `find_contacts_by_company`, T2/T3 sin web skip silencioso, marca `ia_fit_reason='no_contactos_encontrados'` cuando Hunter respondió pero ningún email pasó filtro. 58 tests nuevos (228 totales) verdes, mypy --strict limpio (la deuda de `config.py:94` sigue siendo la única). Smoke real en dev sobre 3 T3 (`--limit 3 --max-hunter-calls 10`) consumió 3 búsquedas Hunter, insertó 3 contacts en LENA CONSTRUCCIONES (2 nominal + 1 corporativo_pequeno), marcó 2 empresas sin contactos.
 - [ ] **Paso 4b: `research_prospect.py` función dual (D21)** — dossier de personalización (D10 original, alimenta §10.2) + JSON output con `personas_extraidas: [{nombre, cargo_si_aparece, fuente_url}]` para enriquecer cargos T2 (§8.4). Ejecuta sobre los `ia_fit='fit'` con web (~5€).
 - [ ] **Paso 5: prompts** `generate_email_{opening,reframe,closing}.md` en `apps/workers/shared/prompts/` con bloque condicional por `email_type` (decisor/nominal/corporativo_pequeno, §10.2).
 - [ ] **Paso 6: validación E2E** sobre 5 empresas T3 reales (NO las 25 del Frente C — otras 5 al azar entre los `ia_fit='fit'` de prod) en HITL completo: research → find_contacts → generate_draft → cola aprobación.
@@ -1064,6 +1064,10 @@ Eso es v2 si tiene sentido, no antes.
 - [ ] Worker `verify_emails.py` validado — se activa al insertar el primer `contact` con email no verificado (Sprint 4 paso 4 en adelante)
 - [ ] Logs y observabilidad básica
 - [ ] Pantalla "Pipeline" funcional (read-only) — pre-requisito UX de Sprint 4 paso 6/7 para que Gonzalo audite leads + research + contactos
+
+**Deuda técnica conocida (no scope Sprint 4):**
+
+- `apps/workers/shared/config.py:94` — `mypy --strict` reporta `Argument 1 to "env_file_path" has incompatible type "Literal['dev','prod'] | None"; expected "Literal['dev','prod']"`. Detectado al ejecutar mypy en Sprint 4 paso 3 (commit af60296). No bloquea ningún flujo runtime — `os.environ.get("ENV","dev")` siempre devuelve string. Fix trivial (`assert env is not None` o cambiar la firma). Se aborda cuando bloquee algo o en una pasada de saneamiento general.
 
 **Criterio de salida Fase 1:** lista de ~400-500 leads cualificados, con email verificado, dossier de research, listos para campaña. Dashboard muestra el pipeline. KB indexado y editable. **Estado actual 2026-05-06: contacts=0, messages=0, pantalla pipeline scaffold. Cierre técnico llega al cumplir Sprint 4 paso 6 (validación E2E sobre 5 T3 reales).**
 
@@ -1635,6 +1639,34 @@ T4 sin web es 55.6% del universo accionable — el plan original asumía mayorí
 - Evaluación TOS + Phantombuster del flujo LinkedIn (Sprint 5 dependencia humana).
 
 **Lecciones nuevas registradas en `tasks/lessons.md`:** 24 (universo PYME construcción ES dominado por T4 sin web 55.6% — validar input mínimo de cada tier antes de comprometer arquitectura), 25 (flujo LinkedIn → URL → email finder hit rate 60-80% industrial — apuntado Sprint 5+ con riesgos TOS/RGPD), 26 (empresite/einforma como fuente complementaria T4, mini-experimento estructurado pendiente), 27 (roll-out escalonado por probabilidad de respuesta — primeros 100 envíos marcan reputación de remitente, práctica industrial estándar).
+
+### 2026-05-06 — Cierre Sprint 4 paso 4: find_contacts.py + smoke verde sobre 3 T3 dev
+
+`apps/workers/pipeline/find_contacts.py` (449 líneas) cierra el paso 4 del Sprint 4 (D21, D22). El worker itera companies con `ia_fit='fit'` del tier solicitado, llama `HunterAdapter` con el dominio extraído de `companies.web` vía `tldextract` (o `find_contacts_by_company` como fallback gratis para T1/T4 sin web), clasifica cada email con `email_policy.classify_email`, opcionalmente enriquece nominal-sin-cargo con `research_data.personas_extraidas` (D21, no-op mientras paso 4b no haya corrido), aplica `is_acceptable_for_tier`, prioriza 1..4 (decisor+conf≥80=1, decisor=2, nominal=3, corporativo_pequeno=4) y elige hasta 3 candidatos por empresa (D18). Inserta con `email_source='hunter'`, `email_verified=false`, `is_primary=true` solo en el primero; `ON CONFLICT (company_id, email) DO NOTHING` cubre re-runs. Las empresas que llamaron Hunter pero quedaron sin candidatos aceptables se marcan con `ia_fit_reason='no_contactos_encontrados'` (sentinel para paso 6/7).
+
+**Política operativa interna:** procesamiento sequential (no thread pool — Hunter Free 25/mes hace que la paralelización no compense y aumenta el riesgo de rate limit), cap defensivo `--max-hunter-calls 20` por defecto (deja 5 de margen al Free 25/mes), `--tier {T1..T4}` obligatorio (forzar al humano a pensar qué tier ataca, no hardcoded a T3 aunque D22 lo ordene primero), `--reprocess` para sobrescribir empresas ya pobladas (default: skipea con `NOT EXISTS`).
+
+**Tests (58 nuevos, 228 totales verdes).** `tests/test_find_contacts.py` cubre las 5 funciones puras (`resolve_domain_from_company` con tldextract, `assign_priority` con tabla parametrizada incluyendo el umbral 80 inclusivo, `select_top_candidates` con orden por priority asc + confidence desc, `enrich_with_personas_extraidas` con normalización y casos defensivos, `classify_and_filter` con T2 vs T1/T3/T4 y A3 con/sin enriquecimiento) más `process_company` con `MagicMock` del adapter (T1/T4 sin web → fallback, T2/T3 sin web → skip silencioso, truncado a 3, todo filtrado tras llamar Hunter). Mypy `--strict` sobre `pipeline/find_contacts.py` limpio — la única alerta restante en el repo sigue siendo la deuda `config.py:94` documentada en §14, fuera de scope.
+
+**Smoke real en dev (3 búsquedas Hunter consumidas):**
+
+```
+find_contacts  env=dev  tier=T3  limit=3  max_hunter_calls=10  reprocess=False
+[fetch] 3 empresas a procesar
+  [3/3]  hunter_calls=3  insertados=3  sin_contactos=2  skip_no_dom=0  errs=0
+
+contacts insertados (3):
+  A78062601 LENA CONSTRUCCIONES   zaragoza@nozar.es        nominal  prio=3 primary=True
+  A78062601 LENA CONSTRUCCIONES   jaime.nozaleda@nozar.es  nominal  prio=3 primary=False  (Business Development Director)
+  A78062601 LENA CONSTRUCCIONES   info@nozar.es            corporativo_pequeno  prio=4 primary=False
+empresas sin contactos aceptables: 2 (servishop.com y pinnea.com — Hunter devolvió 0 emails)
+```
+
+Antes del smoke: 64 T3 fit en dev, 0 con contacts. Después: 1 con contacts (LENA CONSTRUCCIONES, 3 contacts), 2 marcadas `ia_fit_reason='no_contactos_encontrados'`. Comportamiento end-to-end como esperado: prioridad asignada correcta, `is_primary` solo en el primero, todos `email_verified=false` (lo rellenará `verify_emails.py`).
+
+**Observación lateral (deuda nueva, NO scope paso 4):** `httpx` loguea por defecto la URL completa de cada request en INFO, lo cual incluye `?api_key=<REDACTED-2026-05-13-tras-leak-GitGuardian>` en cleartext. Si en algún momento los logs viajan a un sistema central (Sentry, CloudWatch, ELK), la API key queda expuesta. El leak viene del `HunterAdapter` (paso 3) y de la API de Hunter, que solo acepta key como query param. Fix futuro: silenciar `logging.getLogger("httpx").setLevel(WARNING)` en `shared/llm.py`/`hunter_adapter.py`, o filtrar en handlers. Apuntado, no urgente.
+
+**Compromiso de cap Hunter:** plan Free 25/mes. 3 búsquedas consumidas hoy + ~25 que ya gastó Frente C en sesión 2026-05-06 (commit 3c5b7a9) + algunas residuales. El contador se resetea mensualmente. Sprint 4 paso 6 (validación E2E sobre 5 T3 reales) consumirá otras 5; paso 7 Semana 1 con cap 10/día consumirá ~70/semana — **techo Free agotado en pocos días**. Decisión consciente: para Sprint 4 paso 4 el Free es suficiente; activar Hunter pago (Starter 30-45€/mes con 500 búsquedas/mes) cuando arranque el roll-out productivo del paso 7. Recordatorio guardado en memoria para volver a plantearlo antes de paso 7.
 
 ---
 
