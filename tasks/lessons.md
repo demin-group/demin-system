@@ -616,6 +616,99 @@ Implementación técnica: campo `contacts.email_type` (enum: `decisor` | `nomina
 
 ---
 
+## 2026-05-06 — Lección 24: el universo accionable PYME construcción ES está dominado por empresas SIN web (T4 = 55.6%) — validar input mínimo de cada tier ANTES de comprometer arquitectura
+
+**Contexto:** durante Frente E (sesión 2026-05-06) se hicieron queries directas a `companies` en demin-prod tras Sprint 3 cerrado (`ia_fit='fit'` por tier). La distribución real del universo accionable es:
+
+| Tier | Total SABI | `ia_fit='fit'` | % universo accionable |
+|------|------------|----------------|---|
+| T1 (con web, 1k-5k €) | 455 | 118 | 22.8% |
+| T2 (con web, 5k-20k €) | 171 | 48  | 9.3%  |
+| T3 (con web, 0.5k-1k €) | 252 | 64  | 12.4% |
+| T4 (sin web, 0.5k-20k €) | 855 | **288** | **55.6%** |
+| **Total accionable** | 1.733 | **518** | 100% |
+
+El plan original (§8.5 anterior, D17 antes de superseder) asumía que la mayoría tendría web indexable y por eso eligió Hunter Domain Search como adapter primario. La realidad PYME construcción ES es la opuesta: **más de la mitad del universo accionable carece de web** y por tanto carece del input mínimo de cualquier email finder convencional (incluyendo Hunter, Apollo, Skrapp, RocketReach).
+
+**Corrección humana:** decisión D21 (arquitectura híbrida por tier) reconoce que ningún email finder convencional cubre T4 sin tener dominio primero, por lo que T4 requiere estrategia diferenciada — Opción C en Sprint 5 (research IA + permutación + verificación + empresite/einforma como fuente complementaria de email visible).
+
+**Regla resultante:** antes de elegir arquitectura/proveedor para procesar el universo de leads, **medir la distribución por tier y verificar que cada tier tiene el input mínimo que el proveedor exige**. En el caso de email finders por dominio, el input mínimo es el dominio web. Si un % significativo del universo no lo tiene, la arquitectura debe contemplar un sub-flujo distinto para ese segmento desde el día 1, no como excepción tardía.
+
+**Aplicable más allá de DEMIN:** cualquier proceso B2B que dependa de un identificador externo (dominio, LinkedIn URL, NIF, teléfono móvil…) — verificar la distribución del identificador en el universo objetivo ANTES de comprometer el proveedor que lo consume. La omisión es de "supuesto del plan" tipo Lección 9 (KB manda sobre plan en divergencias) extendida a inputs operativos.
+
+**Aplicado en:** `tasks/todo.md` 2026-05-06 — D21 reparte cobertura por tier, §4 distingue email finder primario (T2/T3) de Opción C (T1/T4), §8.5 documenta T4 con `empresite.com` complementario, §14 Sprint 4 cubre solo T3+T2, §14 Sprint 5 (T1+T4) en planificación posterior, §17 estima coste extra Sprint 5 +50-80€/mes para infraestructura adicional.
+
+---
+
+## 2026-05-06 — Lección 25: flujo profesional B2B M&A para encontrar decisores — LinkedIn → URL del perfil → email finder con URL como input (hit rate típico 60-80%)
+
+**Contexto:** discusión arquitectónica durante sesión 2026-05-06, Alberto aporta experiencia industrial M&A donde el flujo estándar para encontrar decisores B2B es:
+
+1. Buscar en LinkedIn por filtros (cargo + sector + ubicación + tamaño de empresa).
+2. Obtener URL del perfil del decisor.
+3. Pasar la URL a un email finder que devuelve email a partir de URL LinkedIn (no a partir de dominio web).
+
+Hit rate típico de este flujo: **60-80%**, sustancialmente mejor que email finders por dominio (Hunter dio 8% decisor estricto, 20% con D20 sobre PYME ES). La razón estructural es que LinkedIn indexa decisores con mayor cobertura que las webs corporativas, especialmente en empresas pequeñas que no listan equipo en su web.
+
+Coste estimado para DEMIN: Phantombuster (~$60/mes) para automatizar la búsqueda LinkedIn + email finder por URL (~$50/mes). Total ~$110/mes — entra en el techo D15 (150€/mes) si se desactivan otras palancas (warm standby Lemwarm, lotes Hunter mensuales).
+
+**Riesgos identificados:**
+
+1. **TOS de LinkedIn prohíbe scraping automatizado** (incluso de datos públicos). Cuentas que automatizan via Phantombuster, Lemlist Sales Engine, etc., pueden ser baneadas. Contramedida: usar cuenta dedicada sin valor personal de Gonzalo, rate-limit conservador, solo búsquedas (no scraping de mensajería), accept ban como coste hundido.
+2. **RGPD aplicable a procesamiento de datos personales públicos**. Aunque el dato sea público, automatizar su recolección + uso comercial requiere base legal documentada (interés legítimo B2B + balance test + información clara al titular en el primer contacto). El proyecto ya tiene base legal para email outreach B2B (interés legítimo) — extender a LinkedIn requiere actualizar la política de privacidad y el aviso legal.
+
+**Corrección humana:** apuntar el flujo como opción Sprint 5+ pero NO comprometer en Sprint 4. La decisión de activarlo depende de los reply rates reales de Sprint 4 con Hunter+D20 sobre T2+T3.
+
+**Regla resultante:** cuando un humano aporta una práctica industrial validada en otro contexto (en este caso M&A), capturarla como opción documentada con su coste, hit rate típico y riesgos, pero NO ejecutarla sin validar empíricamente sobre el dataset propio. La diferencia entre 60-80% en M&A y 60-80% en construcción ES PYME es desconocida hasta medirla. Pre-requisito de activación: TOS check + cuenta Phantombuster de prueba + medición de hit rate sobre 25 empresas comparable a Frente C.
+
+**Aplicado en:** `tasks/todo.md` 2026-05-06 §18 (dependencia humana Sprint 5 — evaluación operativa flujo LinkedIn), §17 (coste estimado +$60+$50/mes si se activa), §19 entrada "Sesión exploratoria intensiva 2026-05-06". Implementación NO entra en Sprint 4 — depende de medición empírica post-Sprint 4.
+
+---
+
+## 2026-05-06 — Lección 26: fuentes públicas españolas (empresite.com, einforma.com, axesor.es) tienen email visible para subset de PYMEs T4 sin web — fuente complementaria útil pero no resuelve T4 sola
+
+**Contexto:** búsqueda manual durante sesión 2026-05-06 sobre 3 empresas T4 sin web del universo SABI. Resultado: email visible en `empresite.com` en **3/3** casos. N=3 es ruido estadístico, pero la calidad observada es desigual y hace falta un mini-experimento estructurado:
+
+- **Helian:** email mostrado pertenece a una persona física, registrado bajo dominio de OTRA empresa (probablemente la del administrador). Email real pero ¿es el correcto para outreach a esta empresa concreta? Caso ambiguo.
+- **Velázquez Internacional:** empresa en baja registral. Email aparece pero la empresa no está operativa. Outreach inútil.
+- **Velzia Luxury Homes:** empresa marcada como T4 (sin web) en SABI, pero búsqueda manual encontró que SÍ tiene web pública y teléfono visible. Posible error de categorización SABI o web creada después del export. Outreach útil pero el problema NO era cobertura del adapter — era dato SABI desactualizado.
+
+**Corrección humana:** apuntar empresite/einforma como fuente complementaria para Sprint 5 Opción C T4, pero exigir mini-experimento estructurado sobre 10 empresas con tabla de cobertura ANTES de integrarla operativamente. La N=3 actual es insuficiente para estimar hit rate real.
+
+**Regla resultante:** cuando una fuente nueva muestra prometedora con N pequeño (<5), apuntarla como hipótesis y planificar mini-experimento estructurado (N=10-25) con tabla de cobertura ANTES de integrarla en el flujo productivo. La heurística "3/3 funciona, vamos a integrarla" es trampa estadística. La tabla debe documentar: empresa × email_visible_en_perfil × calidad_dato (persona física en otro dominio, baja registral, web ya existente, etc.).
+
+**Riesgos identificados:**
+
+1. **TOS de empresite/einforma** prohíbe scraping comercial automatizado. Como con LinkedIn, contramedida es cuenta dedicada + rate-limit conservador + uso humano-en-el-loop si la fuente lo exige.
+2. **RGPD aplicable a emails de personas físicas** que aparecen en directorios públicos. La base legal de interés legítimo B2B aplica si el email es funcional (info@empresa, contacto@empresa). Para emails de persona física que aparecen porque la empresa los publicó como contacto comercial, el balance test sigue siendo razonable pero requiere documentación.
+
+**Aplicado en:** `tasks/todo.md` 2026-05-06 §8.5 (T4 con `empresite.com`/`einforma.com` como fuente complementaria de Sprint 5), §18 (dependencia humana Sprint 5 — mini-experimento estructurado sobre 10 empresas con tabla de cobertura), §19 entrada del 2026-05-06.
+
+---
+
+## 2026-05-06 — Lección 27: roll-out de cold outreach escalonado por probabilidad de respuesta — primeros 100 envíos marcan reputación del dominio para los siguientes 1.000
+
+**Contexto:** decisión D22 durante sesión 2026-05-06. La pregunta operativa era: tras Sprint 4 listo, ¿se mandan correos a las 51 T3 + 48 T2 + 118 T1 + 288 T4 todas a la vez al cap de 10/día, o por lotes? La práctica industrial estándar (capturada implícitamente por Lemwarm, Instantly, Smartlead, Lemlist en sus blogs y guías de deliverability) dice que **los primeros 100 envíos en frío de un dominio nuevo marcan la reputación del remitente para los siguientes ~1.000-10.000**:
+
+- Si los primeros 100 envíos van a leads de **alta probabilidad de respuesta** (cobertura adapter alta + propuesta de valor relevante + cargo correcto), el reply rate inicial es alto, pocos bounces, pocos spam complaints. Gmail/Outlook ven al remitente como "mailer legítimo con engagement positivo" y suben el límite implícito de envíos diarios.
+- Si los primeros 100 envíos van a leads de **baja probabilidad** (cobertura adapter baja, mucho `info@` mal segmentado, cargo incierto), el reply rate es bajo y los bounces/spam complaints suben. El dominio entra en "watch list" de los proveedores y los siguientes 1.000 envíos van a spam aunque la calidad mejore.
+
+Ratio práctico: una semana mala al inicio puede degradar deliverability durante meses; una semana buena al inicio compra ~6-12 meses de buffer.
+
+**Corrección humana:** D22 — roll-out escalonado por tier en Sprint 4. Semana 1 solo T3 (cobertura D20 80%, alta confianza). Semana 2-3 añadir T2 con research IA enriquece-cargo (cobertura D21 estimada 50-60%). T1 y T4 (cobertura 0% sin Opción C) NO entran a Sprint 4 — esperan Sprint 5.
+
+**Regla resultante:** roll-out de cold outreach escalonado por probabilidad de respuesta NO es paranoia, es práctica industrial. Aplica desde el día 1 del primer envío en frío:
+
+1. Empezar por el segmento con MAYOR cobertura de adapter Y MAYOR fit con la propuesta de valor — los dos juntos. Cobertura sin fit no genera reply; fit sin cobertura no genera envío.
+2. Threshold operativo: **si reply rate Semana 1 < 3% sostenido, parar el roll-out** y revisar KB / prompts / segmento ANTES de añadir el siguiente tier. Es preferible parar 1 semana que quemar el dominio por avanzar con datos malos.
+3. Documentar en plan: cada Sprint que active envío productivo debe declarar el tier de arranque y los thresholds de pausa, no solo el total a procesar.
+
+**Aplicable más allá de DEMIN:** cualquier sistema que arranque cold outreach desde un dominio nuevo debe escalonar. Aplicable también a re-engage masivos tras pausas largas (la reputación caduca con la inactividad — un mes sin enviar y los proveedores te tratan como remitente nuevo de nuevo).
+
+**Aplicado en:** `tasks/todo.md` 2026-05-06 D22 + §14 Sprint 4 reorganizado en 9 pasos con roll-out explícito (paso 7 Semana 1 solo T3, paso 8 Semana 2-3 añadir T2), §16 riesgo nuevo "reply rate estructuralmente bajo en T3" con threshold de pausa 3%, §19 entrada "Sesión exploratoria intensiva 2026-05-06".
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
