@@ -298,9 +298,27 @@ def fetch_pending_contacts(
     limit: int | None,
     rerun: bool,
 ) -> list[PendingContact]:
-    """Trae contacts cuyos companies tienen research OK + tier solicitado +
-    no opt-out. Si `rerun=False` (default), excluye contacts que ya tienen
-    message previo del mismo step_index (idempotencia)."""
+    """Trae contacts elegibles para draft, **filtrando por `is_primary=true`**
+    (paso 6.5 — fix del envío simultáneo a múltiples contacts/empresa).
+
+    Filtros:
+        - company.ia_fit='fit' + tier solicitado + research OK + sin _failed
+        - contact.is_optout=false
+        - contact.is_primary=true (D18 + §9.2 + §10.1: cadencia 1:1
+          contacto-secuencia; los no-primary quedan como respaldo manual,
+          NO entran a la cadencia automática)
+        - Si `rerun=False` (default): no existe message previo del mismo
+          step_index (idempotencia)
+
+    `find_contacts.py` asigna `is_primary=true` al candidato de mejor
+    `email_priority` (1..4) por empresa. Los 1-2 candidatos restantes
+    quedan en BD como respaldo visible en `/pipeline/[id]` para
+    escalación manual desde el dashboard si en Fase 3 el primary entra
+    en `no_interesado` tras la cadencia. NO se envía a varios contacts
+    de la misma empresa simultáneamente — eso queman deliverability
+    (3 emails al mismo dominio el mismo día = señal spam) y degrada
+    los primeros 100 envíos del roll-out (Lección 27).
+    """
     from shared.db import get_session  # noqa: PLC0415
 
     step_index = _STEP_BY_ANGLE[angle]
@@ -324,6 +342,7 @@ def fetch_pending_contacts(
           AND c.research_done_at IS NOT NULL
           AND NOT (c.research_data ? '_failed')
           AND ct.is_optout = false
+          AND ct.is_primary = true
     """
     if not rerun:
         sql += """

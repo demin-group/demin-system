@@ -57,3 +57,7 @@ strict_equality = true
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "integration: tests que requieren acceso a BD dev real (opt-in via `pytest -m integration`). Excluidos por default.",
+]
+addopts = "-m 'not integration'"
