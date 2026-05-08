@@ -612,6 +612,8 @@ La whitelist positiva, la whitelist negativa y la política tier-segmentada vive
 
 **Selección y priorización (D18 + D20):** se eligen 2-3 candidatos por empresa máximo (D18). El campo `contacts.email_priority` (1-4) ordena los candidatos: 1 = decisor con confidence alto del adapter primario; 4 = corporativo_pequeño en T1/T3 cuando es el único candidato. El primero por prioridad lleva `is_primary=true`. `email_source` se rellena con el adapter que devolvió el dato (`'hunter'` | `'skrapp'` | `'apollo'` | `'manual'`).
 
+**Los candidatos no-primary son respaldo manual, NO envío automático** (clarificado en paso 6.5, 2026-05-08). `generate_draft.py` filtra por `is_primary=true` y solo redacta para el primario. Los 1-2 candidatos no-primary quedan visibles en `/pipeline/[id]` como respaldo: si en Fase 3 el primario entra en `no_interesado` tras la cadencia D+0/D+4/D+10, Gonzalo puede escalar manualmente al secundario desde el dashboard. NO entran a la cadencia automática: enviar a varios contacts de la misma empresa el mismo día es señal de spam para los filtros del receptor (Gmail, Outlook) y degrada la reputación del dominio durante los primeros 100 envíos (Lección 27).
+
 **Empresas T4 (sin web): Sprint 5 con Opción C + empresite (D21).** Hunter validó **0% hit rate en T4** sobre el sample experimental (commit 3c5b7a9, 1 falso positivo descartado en Frente E). Apollo y Skrapp también descartados durante la sesión 2026-05-06 (Lección 21 aplicada 4×). T4 representa **288 fits / 518 = 55.6% del universo accionable** (Lección 24): no se puede ignorar. La estrategia es **Opción C completa en Sprint 5**: research IA web del prospecto si la empresa publica algo + permutación de patrones email (`nombre@`, `n.apellido@`, `nombre.apellido@`) + verificación con MillionVerifier + `empresite.com`/`einforma.com` como fuente complementaria de email visible (Lección 26 — prueba manual 3/3 con muestra ruidosa, mini-experimento estructurado pendiente). El flujo LinkedIn (Lección 25) queda como segunda alternativa si Opción C resulta insuficiente.
 
 **Empresas T1 (con web pero pequeñas): Sprint 5 con Opción C completa (D21).** Hunter dio **0% en T1 también** (commit 36d5077, único email `ylozano@` sin nombre ni cargo). El índice de Hunter no cubre estas micro-PYMEs con web — el problema NO es de criterio (D20 ya está al máximo de permisivo en T1) sino de cobertura. Para los ~118 T1 fits, Sprint 5 aplica el mismo flujo Opción C que T4 (research IA + permutación + verificación), aprovechando que sí hay web indexable.
@@ -712,7 +714,7 @@ Pausa = todos los `messages` con `status='scheduled'` pasan a `status='paused'`.
 
 Por cada `message` a redactar:
 
-1. Carga del contacto + empresa + research_data
+1. Carga del contacto + empresa + research_data. **El worker filtra por `contacts.is_primary=true`** (D18 + §9.2: cadencia 1:1 contacto-secuencia, NO envío simultáneo a varios contacts de la misma empresa). Los contacts no-primary quedan como respaldo manual visible en `/pipeline/[id]`; entran a la cadencia automática solo si en Fase 3 el primary entra en `no_interesado` y se escala manualmente desde el dashboard. Filtrar por `is_primary` se añadió en paso 6.5 (commit pendiente al cierre — antes el worker iteraba todos los contacts elegibles, generando hasta 3 drafts simultáneos al mismo dominio = señal spam y degradación de los primeros 100 envíos del paso 7, Lección 27).
 2. Determinar etapa (`step_index` y `angle`)
 3. Cargar correos previos enviados al mismo contacto (para que no se repita)
 4. Hacer retrieval del KB (5 chunks más relevantes a la empresa + ángulo)
@@ -1765,7 +1767,7 @@ Opción C confirmada PM-side: cierre del paso 6 con 4 sub-componentes en lugar d
 | NIF | empresa | web | resultado research | resultado find_contacts | resultado generate_draft |
 |---|---|---|---|---|---|
 | `A41974684` | SERVISHOP MANLOGIST | servishop.com | OK | 0 emails (Hunter sin cobertura) | — |
-| `A78062601` | LENA CONSTRUCCIONES | nozar.es | OK | (ya tenía 3 contacts del paso 4) | **3 drafts OK** |
+| `A78062601` | LENA CONSTRUCCIONES | nozar.es | OK | (ya tenía 3 contacts del paso 4) | **3 drafts OK [BUG: ver paso 6.5]** |
 | `A80454598` | SB 63 (pinnea) | pinnea.com | OK | 0 emails | — |
 | `B02707198` | TRAZO REHABILITACIONES | trazo.net | OK | 0 emails | — |
 | `B05294269` | CUADRATURA SOLUCIONES | cuadraturasoluciones.com | OK | 0 emails | — |
@@ -1774,7 +1776,7 @@ Opción C confirmada PM-side: cierre del paso 6 con 4 sub-componentes en lugar d
 Métricas reales del smoke:
 - research_prospect: **6/6 OK** ($0.10 USD, 0 _failed, 1 thin_html_possibly_spa, 0+3 personas extraídas — primera evidencia positiva del cruce D21).
 - find_contacts: cobertura Hunter T3 efectiva = **20%** (1 contact en 5 empresas + 1 más al añadir NOG; 6 búsquedas Hunter consumidas, 37→31 restantes). **Frente E proyectaba 80%** sobre 5 T3 — divergencia significativa que merece análisis en paso 9.
-- generate_draft: **4/4 drafts OK** ($0.077 USD, 0 con validation warnings, 18.661 tokens in + 1.390 out). Las 3 variantes por `email_type` aplican correctamente en producción (decisión C de paso 5 validada con datos reales): 1 nominal-con-cargo (jaime.nozaleda Director de Business Development), 1 nominal-sin-cargo (zaragoza, A3 T3), 2 corporativo_pequeno (info@nozar, administracion@noginteriorismo).
+- generate_draft: **4/4 drafts OK** ($0.077 USD, 0 con validation warnings, 18.661 tokens in + 1.390 out). Las 3 variantes por `email_type` aplican correctamente en producción (decisión C de paso 5 validada con datos reales): 1 nominal-con-cargo (jaime.nozaleda Director de Business Development), 1 nominal-sin-cargo (zaragoza, A3 T3), 2 corporativo_pequeno (info@nozar, administracion@noginteriorismo). **[CORREGIDO en paso 6.5, 2026-05-08: este reporte erróneamente describió el escenario como deseado. La realidad es que generar 3 drafts simultáneos a 3 contacts del mismo dominio (nozar.es) es un BUG operativo — viola D18 + §9.2 + §10.1 (cadencia 1:1 contacto-secuencia) y degrada deliverability del primer batch del paso 7. Bug detectado por auditoría humana antes de autorizar paso 7. Adicionalmente este reporte indicó "primary=jaime" cuando la BD muestra primary=zaragoza — error de transcripción mío al redactar §19. Tras paso 6.5: jaime + info quedan `cancelled` con `_cancelled_reason='paso65_fix_solo_primary'` y `_cancelled_from_status='approved'`; queda 1 draft vivo en LENA = zaragoza primary actual. Paso 6.6 abre el sub-issue de si zaragoza (sin cargo) debería ser primary sobre jaime (con cargo Business Development Director) — al cerrar paso 6.6 puede revertirse.]**
 - Calidad cualitativa de los drafts: hooks anclados al material auténtico del research ("Tabit IV en El Cañaveral", "Torre de Poniente, Residencial Marina", "espacios comerciales como el de Chamberí"), tono Gonzalo (sin emojis, sin "!", condicional al hablar de DEMIN, ≤130 palabras body), cierre con pregunta directa de conversación corta (15-20 min). 0 invenciones detectadas en muestra.
 - Coste total smoke E2E: **$0.18 USD + 6 búsquedas Hunter**.
 
@@ -1788,6 +1790,37 @@ Métricas reales del smoke:
 
 - **Auditoría humana inmediata**: Alberto/Gonzalo corren `python -m scripts.hitl_review --env dev` y revisan los 4 drafts. La aprobación/rechazo en HITL valida la UX terminal end-to-end. Si Gonzalo aprueba ≥2 de 4 drafts sin editar, el paso 5 (prompts) se confirma como production-ready.
 - **Decisión sobre Hunter pago**: pendiente para arranque de paso 7. Memoria `project_hunter_paid_plan.md` con dato corregido (50/mes).
+
+### 2026-05-08 — Paso 6.5: fix bug envío simultáneo a múltiples contacts/empresa + Lección 28
+
+**Bug detectado en auditoría humana** (Alberto, rol PM) tras cerrar paso 6: el smoke E2E generó 3 drafts simultáneos a 3 direcciones del mismo dominio (jaime + zaragoza + info @ nozar.es) en LENA CONSTRUCCIONES. Operativamente: spam interno para el prospecto + señal de spam para los filtros del receptor + degradación de los primeros 100 envíos del paso 7 (Lección 27).
+
+**Diagnóstico** (auditoría completa documentada en sesión 2026-05-08):
+- `generate_draft.py:fetch_pending_contacts` filtraba por las condiciones obvias (research OK, no opt-out, no message previo del mismo step_index) **pero NO por `is_primary=true`**. Cogía todos los contacts elegibles → 1 draft por cada uno.
+- `find_contacts.py` **sí asignaba `is_primary=true` correctamente** al candidato de mejor priority por empresa. El bug era de paso 6, no de paso 4.
+- El plan ya autorizaba el comportamiento correcto (D18 "menos pierde el lead **si el primero no responde**" + §8.5 "Primero por prioridad → `is_primary=true`" + §9.2 "**3 toques por contacto**" + §10.1 "Carga **del contacto** + empresa") — pero §10.1 no decía explícitamente "filtra por is_primary". Mi planificación de paso 6 nunca cruzó D18+§8.5+§9.2 con la query de selección.
+- Suite de 88 tests del paso 6 cubrió el comportamiento erróneo como si fuera correcto: parametrizó `email_type` decisor/nominal/corporativo pero NUNCA verificó que `fetch_pending_contacts` respeta `is_primary`.
+
+**Fix aplicado:**
+- **Código** (`apps/workers/pipeline/generate_draft.py`): `AND ct.is_primary = true` añadido al WHERE de `fetch_pending_contacts` + docstring extendido con justificación cruzada a D18+§9.2+§10.1.
+- **Test** (`apps/workers/tests/test_integration_generate_draft.py`, marker `@pytest.mark.integration`): test integración nuevo con BD dev real que inserta company + 2 contacts (1 primary + 1 no) y verifica que `fetch_pending_contacts` devuelve solo el primary. Más test secundario que cubre opt-out > is_primary. Marker `integration` registrado en `pyproject.toml` con `addopts = "-m 'not integration'"` (excluido por default; opt-in via `pytest -m integration`).
+- **Limpieza datos dev** (`apps/workers/scripts/cleanup_paso65.py`): UPDATE quirúrgico sobre los 4 drafts del smoke paso 6, cancelando los 2 cuyo contact no era is_primary (jaime + info de LENA). PM-confirmed: las aprobaciones humanas previas (status='approved') fueron de calidad de prosa, no de coherencia operativa — el bug se detectó después. Las 4 aprobaciones se preservan en event trail con `status='cancelled'` + `_cancelled_reason='paso65_fix_solo_primary'` + `_cancelled_from_status='approved'`. Estado tras cleanup: 2 drafts vivos (zaragoza LENA primary + administracion NOG primary).
+- **Plan**:
+  - §10.1 paso 1: explícito ahora — "**El worker filtra por `contacts.is_primary=true`** (D18 + §9.2: cadencia 1:1 contacto-secuencia, NO envío simultáneo a varios contacts de la misma empresa)".
+  - §8.5 selección/priorización: añadida frase aclaratoria — "Los candidatos no-primary son respaldo manual, NO envío automático".
+  - §19 cierre paso 6: añadidos dos `[CORREGIDO ...]` inline (uno tildando "3 drafts OK" como BUG en la tabla por empresa, otro corrigiendo la transcripción errónea "primary=jaime" → "primary=zaragoza" + apuntando paso 6.6). Trazabilidad sobre limpieza: la entrada original NO se reescribe silenciosamente; se anota la corrección.
+- **Lección 28** en `tasks/lessons.md`: meta-patrón de proceso. La causa raíz no es la línea de código que faltaba; es de proceso — al planificar el paso 6 leí "el worker itera contacts" en §10.1 y construí los filtros consultando solo §10 + §6.1. NO crucé esa decisión con D18 + §8.5 + §9.2 que apuntaban inequívocamente a "1 contact activo por empresa". Regla resultante: cuando un worker itere sobre una entidad, **enumerar las decisiones del plan que afectan a esa entidad** (no solo la sección donde el worker está documentado) y traducir cada una a un filtro o aserción concreta. Tests de SQL de selección requieren cobertura de filtro explícita (insert 2 con condición distinta, verificar que solo 1 aparece). Auditoría humana ANTES de autorizar acciones operativas con efecto externo (envío real, integraciones API, mutación downstream) — la validación E2E técnica es necesaria pero insuficiente.
+
+**Verificación**:
+- Suite default 424/424 verde + 2 deselected (los integration excluidos por default, ejecutables con `pytest -m integration` y verdes 2/2).
+- mypy `--strict pipeline/generate_draft.py` limpio (deudas pre-existentes en `shared/` siguen igual).
+- Estado dev tras cleanup verificado con `scripts/debug_contact_state.py`: 2 messages vivos (zaragoza LENA approved + administracion NOG approved), 2 cancelled con razón trazable.
+
+**Sub-issue abierto que paso 6.5 NO arregla:**
+
+El primary actual de LENA es zaragoza (nominal **sin cargo**) en lugar de jaime (nominal **con cargo** "Business Development Director"). `find_contacts.assign_priority` empata ambos en prio=3 dentro del bucket nominal y resuelve por confidence Hunter, donde zaragoza ganó. Intuitivamente jaime es mejor candidato (cargo claro = perfil decisor). **Paso 6.6 abierto inmediatamente tras 6.5**: revisar `assign_priority` para que dentro del bucket nominal, "nominal-con-cargo" gane a "nominal-sin-cargo" antes que el desempate por confidence. Re-correr `assign_priority` sobre los contacts ya existentes en dev (probablemente vía recompute de `email_priority` + `is_primary` por empresa) para que el cleanup del 6.5 quede coherente. Paso 7 sigue bloqueado hasta que 6.6 cierre y la auditoría humana sobre el set final de drafts (1 jaime LENA + 1 administracion NOG, esperado tras 6.6) confirme que ahora hay 2 drafts vivos correctos.
+
+**Coste paso 6.5**: ~70 min trabajo (estimación inicial cumplida). Sin coste LLM (tests + cleanup SQL puros). 0 búsquedas Hunter consumidas (Free quota sigue en 31).
 
 ---
 

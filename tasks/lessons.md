@@ -723,6 +723,36 @@ Ratio práctico: una semana mala al inicio puede degradar deliverability durante
 
 ---
 
+## 2026-05-08 — Lección 28: cuando un worker itera sobre una entidad, cruzar EXPLÍCITAMENTE los filtros de selección con TODA la cadena de decisiones del plan que la afectan, no solo con la sección donde está documentada esa entidad
+
+**Contexto:** Sprint 4 paso 6 implementó `generate_draft.py` con `fetch_pending_contacts` filtrando por las condiciones obvias (research OK, no opt-out, no message previo del mismo step_index). 88 tests cubrieron el comportamiento. Mypy `--strict` limpio. Smoke E2E sobre 5 T3 reales generó 4 drafts en `messages.status='drafted'` y se reportaron como "OK 4/4". El humano (Alberto, en rol PM) detectó en auditoría que LENA CONSTRUCCIONES tenía 3 drafts simultáneos a tres direcciones del mismo dominio (jaime + zaragoza + info @ nozar.es), lo cual es spam interno para el prospecto y señal de spam para los filtros de Gmail/Outlook (degrada los primeros 100 envíos del paso 7, Lección 27). El bug es trivial — falta `AND ct.is_primary = true` en el WHERE — pero pasó la suite porque el campo `contacts.is_primary` existe en el schema, find_contacts lo asignaba bien, los tests parametrizaban distintos `email_type` pero NUNCA comprobaron si `fetch_pending_contacts` respeta `is_primary`.
+
+La causa raíz no es la línea de código que faltaba; es de proceso: al planificar el paso 6, leí "el worker itera contacts" en §10.1 y construí los filtros consultando solo §10 (pipeline de generación) + §6.1 (schema de messages). Lo que NO hice fue cruzar esa decisión de filtrado con D18 ("2-3 decisores por empresa, [...] menos pierde el lead **si el primero no responde**" — la frase que IMPLICA secuencia, no envío simultáneo) + §8.5 ("Primero por prioridad → `is_primary=true`" — el campo existe específicamente como selector de cadencia) + §9.2 ("3 toques **por contacto**" — la unidad de cadencia es el contacto). Los 4 puntos del plan apuntaban inequívocamente a "1 contact activo de cadencia por empresa", pero ninguno lo decía explícitamente en §10.1, así que el filtro `is_primary` se omitió.
+
+**Corrección humana:** Alberto detectó el bug en auditoría manual antes de autorizar paso 7. Pidió fix mínimo (filtro `is_primary=true` + test integración + cleanup datos dev + edición §10.1/§8.5 explícitos) registrado como paso 6.5. Y pidió **registrar esta lección como meta-patrón de proceso**, no como corrección puntual del bug.
+
+**Regla resultante:**
+
+- **Cuando un worker itere sobre una entidad** (contacts, companies, messages, replies, etc.), antes de fijar el SQL de selección, **enumerar las decisiones del plan que afectan a esa entidad** — no solo la sección donde el worker está documentado. Hacer esa lista explícita en el plan (sub-bloque "decisiones cruzadas" del paso, o bullet en §X.Y del worker) y traducir cada una a un filtro o aserción concreta. Si el plan menciona un campo del schema (ej. `is_primary`, `is_optout`, `is_active`, `email_verified`), preguntar para cada uno: "¿debe el worker filtrar por este campo?" — la respuesta explícita "sí, filtra" o "no, no aplica" queda en el plan.
+- **Para entidades con múltiples flags operativos** (`contacts` tiene `is_primary` + `is_optout` + `email_verified`; `messages` tiene `status` con 7 valores), construir una matriz "flag × worker" en el plan que documente qué flags consume cada worker. La matriz hace evidentes los huecos.
+- **Tests de SQL de selección requieren cobertura de filtro explícita**, no solo de comportamiento downstream. Para `fetch_X_pending`, los tests deben cubrir: insert 2 entidades con la condición distinta (1 que pasa el filtro, 1 que no) y verificar que solo la primera aparece en el resultado. Sin ese test, el SQL puede tener un bug que la suite de comportamiento no captura porque downstream se ve igual con o sin el filtro.
+- **Auditoría humana ANTES de autorizar acciones operativas con efecto externo** (envío de correos, integraciones con APIs de terceros, modificación de estado en sistemas downstream). El paso 7 introduce envío real Gmail; sin la auditoría humana del paso 6, los 3 drafts simultáneos a nozar.es habrían entrado al primer batch productivo y degradado deliverability. La validación E2E técnica del paso 6 (workers funcionan) es necesaria pero insuficiente — la validación humana de coherencia operativa es el gate que autoriza envío productivo.
+
+**Aplicable más allá de DEMIN:** cualquier worker que produzca acciones con efecto externo (envío, llamada API, mutación downstream) debe pasar por gate humano entre validación técnica E2E y producción real. La diferencia de coste entre detectar este bug pre-envío (1 commit fix de 5 líneas) y detectarlo post-envío (dominio quemado, deliverability degradada durante meses) es la diferencia entre 1 hora y un sprint perdido.
+
+**Aplicado en:**
+- `tasks/todo.md` §10.1 paso 1: filtro `is_primary=true` documentado explícitamente con su justificación cruzada a D18+§9.2.
+- `tasks/todo.md` §8.5 paso "Selección y priorización": frase aclaratoria "los candidatos no-primary son respaldo manual, NO envío automático".
+- `apps/workers/pipeline/generate_draft.py` `fetch_pending_contacts`: filtro `AND ct.is_primary = true` añadido + docstring extendido con justificación.
+- `apps/workers/tests/test_integration_generate_draft.py`: test integración nuevo con marker `@pytest.mark.integration` que verifica filtro `is_primary` con BD dev real (1 primary + 1 no primary → solo el primary aparece en resultado).
+- `apps/workers/scripts/cleanup_paso65.py`: cancela los messages pre-envío (drafted + approved) cuyo contact no es is_primary, preservando el status anterior en `_cancelled_from_status` para event trail.
+- `tasks/todo.md` §19 entrada "Cierre Sprint 4 paso 6.5".
+- Esta lección.
+
+**Trigger de aplicación inmediata:** paso 6.6 (asignación de `is_primary` en `find_contacts.py`) y paso 7+ (cualquier worker que itere sobre `contacts` o `messages`). Para Sprint 5 y Fase 3, **antes de implementar cualquier worker que itere sobre una entidad de BD**, hacer la pasada de "decisiones cruzadas" descrita arriba.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
