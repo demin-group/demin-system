@@ -50,8 +50,12 @@ Tier = Literal["T1", "T2", "T3", "T4"]
 MAX_CONTACTS_PER_COMPANY = 3
 """D18: máximo 2-3 candidatos por empresa. 3 nos da margen sin spamear."""
 
-DEFAULT_MAX_HUNTER_CALLS = 20
-"""Cap defensivo. Plan Free 25/mes; dejamos 5 de margen para imprevistos."""
+DEFAULT_MAX_HUNTER_CALLS = 100
+"""Cap defensivo por run. Plan Starter activo desde paso 7 (2026-05-12)
+da 500 búsquedas/mes — 100/run permite 5 runs/mes sin agotar quota, con
+margen para imprevistos. Pre-flight `check_hunter_quota.py` sigue siendo
+obligatorio antes de cada run productivo (decisión 1.6 paso 7).
+Pre-Starter el default era 20 (Plan Free 50/mes con margen)."""
 
 DECISOR_HIGH_CONFIDENCE = 80
 """Umbral confidence para distinguir priority 1 (decisor confiable) de 2."""
