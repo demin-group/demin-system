@@ -99,14 +99,17 @@ _BOUNCE_KEYWORDS = (
 """Substrings (case-insensitive) en el mensaje de error 4xx Gmail que
 clasificamos como bounce sincrono. El resto de 4xx -> 'failed'."""
 
-# Footer fijo (decision PM 1.3 paso 7). §9.3 + sin teléfono hasta que
-# Gonzalo decida si lo incluye. Separador estandar '-- \n' (RFC 3676).
+# Footer fijo (decision PM 2026-05-12 D24 paso 7 pre-B5). §9.3 derogada
+# en su linea de opt-out -- ver D24 + Leccion 32 para justificacion y
+# riesgo aceptado. Separador estandar '-- \n' (RFC 3676). Telefono
+# `+34 692 319 217` verificado contra dossier comercial + onboarding PDF
+# (docs/). Plaintext puro (§9.3 mantiene plain text para deliverability).
 _FOOTER = (
     "\n\n-- \n"
     "Gonzalo Perez\n"
-    "DEMIN Group  |  demingroupmadrid.com\n"
-    "\n"
-    "Si no quieres recibir mas mensajes, responde STOP o diselo y dejaremos de escribirte."
+    "Responsable DEMIN Group\n"
+    "demingroupmadrid.com\n"
+    "+34 692 319 217"
 )
 
 logger = logging.getLogger("demin.send_gmail")

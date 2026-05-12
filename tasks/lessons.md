@@ -857,6 +857,42 @@ Lo que pasó en la práctica:
 
 ---
 
+## 2026-05-12 — Lección 32: cuando se deroga una regla operativa fijada en §9.x del plan, exigir paper trail (justificación + decisión nueva en §3 + lección) ANTES de tocar código, no después
+
+**Contexto:** Sprint 4 paso 7, pre-B5 smoke E2E. PM solicitó que `send_gmail._FOOTER` no incluyera la línea de opt-out (*"Si no quieres recibir más mensajes, responde STOP..."*) que el plan §9.3 fijaba como obligatoria en cada correo desde la sesión 2026-04-29 (Bloque A). PM justificó: *"decisión PM cerrada anteriormente fue que el footer NO LLEVA opt-out"*. Code verificó el repo con grep (`tasks/` + `apps/`) — la supuesta decisión NO existía documentada. Lo opuesto sí estaba en 7 sitios del repo (§9.3 literal, §14 paso 7 dos veces, Apéndice A regla 1, Lección 1 con razón legal LSSI/RGPD, y el propio OK del PM al plan paso 7 en esta misma sesión). Adicionalmente el teléfono `+34 692 319 217` que PM aportó no aparecía en ningún lado del repo (verificado tras lectura de docs/ confirmó que sí estaba en dossier comercial + onboarding PDF — input legítimo nuevo, pero el meta-patrón sigue siendo válido: PM proponía cambio sin paper trail).
+
+Code paró (criterio de parada 3 paso 7 + regla 9 Apéndice A) y pidió justificación escrita ANTES de tocar código. PM eligió opción "decido AHORA quitar opt-out, asumo riesgo legal" + razón operativa *"la estética no compensa el riesgo de deliverability con dominio aún relativamente nuevo"*. NO aportó asesoría legal específica. Code procedió a aplicar el cambio + documentar D24 + esta lección.
+
+**Corrección humana implícita:** Code reportó originalmente al cierre paso 7 *"footer opt-out + firma + tests"* como entregable hecho según §9.3. PM derogó después. La regla no es "Code no debe entregar el opt-out porque va a cambiar" — la regla es "antes de derogar reglas operativas del plan, exigir paper trail explícito". Sin paper trail, una auditoría futura (denuncia AEPD, peritaje, due diligence de inversor) verá *"Code eliminó opt-out"* sin justificación visible — peor que documentar la decisión con razón explícita por mala que sea la razón.
+
+**Regla resultante:**
+
+- **Cuando PM solicite derogar una línea/regla operativa fijada en §9.x o §10.x del plan (anti-spam, validación post-generación, política de cadencia, etc.), Code DEBE bloquear antes de tocar código y exigir:**
+  1. **Verificación**: grep en `tasks/` + `apps/` buscando si la decisión ya está documentada. Si está, citarla y proceder. Si NO está (caso típico cuando PM atribuye a "decisión cerrada anterior" que solo vive en su cabeza), pasar al siguiente paso.
+  2. **Justificación escrita literal del PM**: 1-2 líneas mínimas. Las dos formas aceptables son (a) "asesoría legal/operativa X dice Y" o (b) "no tengo asesoría, asumo el riesgo de forma consciente porque Z". Una tercera "PM dijo y punto" sin razón = paper trail roto = bloquear hasta tener razón.
+  3. **D# nueva en §3 decisiones cerradas** del plan con: fecha + texto literal de la justificación PM + cita de las §§ derogadas + cita del mecanismo alternativo si existe (en este caso, §11.3 detección de opt-out por keywords sigue activo).
+  4. **§ original derogada** con tachado HTML + nota inline citando la D# nueva. NO borrar la línea original — preservar la cadena evidencia "antes decía X, ahora dice Y porque D#".
+  5. **Lección capturando el meta-patrón** (no la decisión específica) para que el próximo derogue siga el protocolo.
+  6. **Test específico que previene regresión** (en este caso `test_footer_does_NOT_contain_optout_text`). Si un futuro Code o humano re-introduce la línea sin actualizar D#, el test grita.
+  7. **Apéndice A NO se toca** salvo que la derogación ataque una de las 12 reglas no-negociables literalmente. §9.3 line items NO son Apéndice A — son política operativa. La regla 1 sobre HITL approval sí es Apéndice A y NO se toca aquí.
+- **El "asumo el riesgo" del PM es justificación aceptable, pero debe quedar literal en D#.** Una auditoría futura ve *"PM 2026-05-12: asumo riesgo LSSI/RGPD, sin asesoría legal documentada"* y entiende. Ve *"Code eliminó opt-out"* sin más y no entiende.
+- **Code no debe inventar justificación legal por el PM.** Si el PM dice "asumo riesgo" sin más, Code transcribe literal. NO escribir "según asesoría legal X" si no es cierto.
+
+**Aplicable más allá de DEMIN:** cualquier sistema con políticas operativas documentadas que un PM/owner quiera relajar. Patrón meta: la derogación silenciosa de una regla (commit que solo cambia código sin tocar plan) es peor que la derogación documentada con razón mala — porque la silenciosa se pierde en auditoría y la documentada deja rastro. Aplicable a flags de seguridad (rate limits, validations, GDPR consent flows, audit logging), no solo a opt-outs de email.
+
+**Aplicado en:**
+- `tasks/todo.md` §9.3: línea opt-out con `~~tachado~~` + cita D24 + razón literal PM + mecanismo alternativo (§11.3 keywords).
+- `tasks/todo.md` §3 D24 nueva con justificación literal *"asumo el riesgo legal"* + *"la estética no compensa el riesgo de deliverability con dominio aún relativamente nuevo"* + composición footer + ruta evidencia teléfono (`docs/dossier_demin.pdf` + `docs/onboarding_demin.pdf`).
+- `tasks/todo.md` §14 paso 7 B5: cita explícita *"footer D24 renderizado (sin línea de opt-out)"* para que el smoke valide la composición correcta.
+- `apps/workers/outreach/send_gmail.py:_FOOTER`: composición nueva + comment header citando D24 + Lección 32.
+- `apps/workers/tests/test_send_gmail.py`: `test_footer_does_NOT_contain_optout_text` (previene regresión) + `test_footer_contains_sender_identity` actualizado con "Responsable DEMIN Group" + "+34 692 319 217".
+- Apéndice A intacto (la derogación no afecta a las 12 reglas).
+- Esta lección.
+
+**Trigger de aplicación inmediata:** próxima vez que PM solicite derogar política operativa fijada en §9.x/§10.x/§11.x del plan. Antes de tocar código: protocolo de 7 pasos arriba. Si PM se niega a aportar justificación literal o se molesta con el protocolo, Lección 32 misma justifica el bloqueo — "esto es paper trail, no fricción burocrática".
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>

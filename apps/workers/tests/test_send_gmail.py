@@ -94,16 +94,24 @@ def test_build_full_body_strips_trailing_whitespace_before_footer() -> None:
     assert _FOOTER in out
 
 
-def test_footer_contains_optout_text_from_plan() -> None:
-    """§9.3 fija el texto del opt-out. Verifica que esta literal en el footer."""
-    assert "responde STOP" in _FOOTER
-    assert "dejaremos de escribirte" in _FOOTER
+def test_footer_does_NOT_contain_optout_text() -> None:
+    """D24 (2026-05-12 paso 7 pre-B5): PM derogo la linea de opt-out del
+    footer. Justificacion documentada en D24 + Leccion 32. Riesgo legal
+    aceptado (LSSI/RGPD AEPD). El test asegura que regresiones futuras no
+    re-introducen el opt-out sin revisar D24."""
+    assert "responde STOP" not in _FOOTER
+    assert "dejaremos de escribirte" not in _FOOTER
+    assert "STOP" not in _FOOTER
 
 
 def test_footer_contains_sender_identity() -> None:
+    """D24 (2026-05-12): footer compone nombre + rol + web + telefono.
+    Telefono `+34 692 319 217` verificado contra docs/ (dossier comercial
+    + onboarding PDF)."""
     assert "Gonzalo Perez" in _FOOTER
-    assert "DEMIN Group" in _FOOTER
+    assert "Responsable DEMIN Group" in _FOOTER
     assert "demingroupmadrid.com" in _FOOTER
+    assert "+34 692 319 217" in _FOOTER
 
 
 def test_footer_separator_is_rfc_3676() -> None:
