@@ -825,6 +825,38 @@ El PM decidió: cap Semana 1 = **20/día** en lugar de 10/día. Rampa nueva 20�
 
 ---
 
+## 2026-05-12 — Lección 31: en sesiones asistidas por chat con humano operando secrets, los secrets aparecen en el chat por inercia — el threat model debe contemplarlo, no pretender que no pasa
+
+**Contexto:** Sprint 4 paso 7, bloqueador B1 (Gmail OAuth en Google Cloud Console). El flow operativo era: PM crea OAuth client tipo Desktop en Google Cloud Console → descarga `credentials.json` → lo coloca en `apps/workers/credentials.json` → ejecuta `scripts/gmail_oauth_setup.py` → genera `refresh_token`. Cero pasos del flow requieren que PM pegue contenido sensible en el chat con Code — basta con que PM diga "el JSON está colocado" y Code verifica shape via `Read` tool sobre el filesystem.
+
+Lo que pasó en la práctica:
+1. PM pegó el contenido completo del `credentials.json` en el chat (incluyendo `client_secret`).
+2. Code flagueó el leak y recomendó rotar el `client_secret` (3 min en Google Cloud Console).
+3. PM rechazó rotar — "me da igual dime cómo continuó" — decisión legítima dado threat model (Desktop OAuth con scope `gmail.send` + Workspace Internal, riesgo real bajo; Google reconoce que Desktop client_secret no es realmente secreto porque el binario puede ser decompilado).
+4. PM ejecutó el script. La salida incluyó el `refresh_token` impreso a stdout (diseño explícito del script para que PM lo pudiera copiar al fichero local — `gmail_oauth_setup.py:113` `print(creds.refresh_token)`). PM copió la salida completa al chat en lugar de redactar el token.
+5. PM aceptó el riesgo otra vez y siguió. Token persistido en BD via Supabase Vault (UUID), recuperable vía `vault.decrypted_secrets`.
+
+**Corrección humana (parcial):** PM aceptó dos veces consecutivas que un secret aparezca en chat. NO es corrección a un error de Code — es decisión PM sobre threat model. Pero PM pidió capturar esto como lección operacional ("Si quieres anotarlo como Lección 32, hazlo. PM lo deja a tu criterio si vale la pena capturar o no.") porque el patrón meta es valioso para futuros flujos.
+
+**Regla resultante:**
+
+- **Asumir que cualquier credencial generada durante una sesión asistida aparecerá en el canal de chat por inercia.** El humano operando copy/paste va a copiar la salida completa del comando, no a redactar partes. Si quieres minimizar exposure, NO basta con decir "no la pegues" — hay que diseñar el flow para que el secret no salga al stdout / que el output no sea naturalmente copiable / que el siguiente paso del PM no requiera el secret en su buffer.
+- **Threat model debe contemplar la exposición chat como dimensión, no pretender que no pasa.** Para Code: el chat es persistente, indexable por Anthropic, e incluido en el contexto de futuras sesiones via auto-memory si aplica. Para credenciales de bajo privilegio + revocables (Desktop OAuth `client_secret`, refresh_tokens scope-limitado, API keys que el proveedor permite rotar trivialmente): aceptable convivir con exposure si el PM lo decide explícitamente. Para credenciales de alto privilegio (service role keys con bypass de RLS, database passwords, prod refresh_tokens con scope amplio): rotación obligatoria pre-uso si aparecieron en chat.
+- **Code debe ofrecer flows que NO requieran que el humano pegue el secret en chat.** Patrón correcto: "guarda el fichero en `<path>` y yo lo leo desde filesystem". Patrón incorrecto: "pégame el contenido". El `gmail_oauth_setup.py` cumple bien (token guardado en fichero local gitignored + impreso a stdout para copy fácil) — pero el script PUDO haber omitido el print a stdout y dependido solo del fichero, para empujar al PM al patrón filesystem. Lección para diseñar scripts futuros con secrets: NO printear a stdout si el siguiente paso no lo requiere; obligar uso del fichero.
+- **Documentar la decisión PM cuando acepta riesgo de exposure.** Trazabilidad para auditoría futura: "secret X expuesto en chat sesión Y, PM aceptó no rotar porque threat model Z". Sin eso, una auditoría futura puede pensar que fue accidente no detectado.
+
+**Aplicable más allá de DEMIN:** cualquier proceso operativo donde un humano + LLM colaboran y el humano ejecuta comandos que producen credenciales. Mismo patrón en CI/CD setup, cloud provider keys, OAuth flows, database passwords iniciales. Mismo principio: el chat persiste lo que entra, asumirlo.
+
+**Aplicado en:**
+- Sesión actual: `client_secret` del OAuth client `350502639252-...` y `refresh_token` Gmail de `gonzalo.perez@demingroupmadrid.com` expuestos en chat. PM aceptó no rotar. Riesgo aceptado: Desktop client_secret semi-público por design + refresh_token revocable desde `https://myaccount.google.com/permissions` si Gonzalo detecta abuso. Workspace Internal restringe quién puede autorizar la app a la organización demingroupmadrid.com.
+- **Trigger inmediato B3 (Hunter Starter API key)**: cuando llegue, Code propone explícitamente al PM: "guarda en `.env.dev`/`.env.prod` directamente, NO pegues en chat". Si PM la pega igualmente, Code captura como segunda iteración del patrón y propone rotar (Hunter permite reset trivial). Si PM acepta exposure, anotar decisión en commit message del integration.
+- `scripts/gmail_oauth_setup.py` queda anotado como "TODO Fase 3: revisar si el print a stdout del refresh_token es necesario o podemos quitarlo y obligar uso del fichero, reduciendo superficie de exposure por inercia copy/paste".
+- Esta lección.
+
+**Trigger de aplicación inmediata:** B3 Hunter API key (próximo bloqueador). Sprint 5 cuando llegue infra adicional con secrets (MillionVerifier, posiblemente Phantombuster). Fase 3 si entra Postmaster Tools API key.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
