@@ -55,6 +55,16 @@ class Settings(BaseSettings):
     HUNTER_API_KEY: str | None = None
     HUNTER_BASE_URL: str = "https://api.hunter.io/v2/"
 
+    # Gmail OAuth — opcional hasta el bloqueador B1 (Sprint 4 paso 7). Una vez
+    # resueltos client_id/secret quedan globales; los refresh_token por buzón
+    # viven en `mailboxes.oauth_refresh_token_encrypted` (Supabase Vault), NO
+    # en este Settings. Para dev local de pruebas se puede usar la env var
+    # GMAIL_OAUTH_REFRESH_TOKEN documentada en .env.example.
+    GMAIL_OAUTH_CLIENT_ID: str | None = None
+    GMAIL_OAUTH_CLIENT_SECRET: str | None = None
+    GMAIL_OAUTH_REFRESH_TOKEN: str | None = None
+    SENDING_DOMAIN: str = "demingroupmadrid.com"
+
     LOG_LEVEL: str = "INFO"
 
     model_config = SettingsConfigDict(
