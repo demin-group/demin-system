@@ -100,22 +100,48 @@ def test_resolve_domain_returns_none_for_unparseable(raw: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "email_type,confidence,expected",
+    "email_type,confidence,position,expected",
     [
-        ("decisor", 95, 1),
-        ("decisor", 80, 1),  # frontera inclusiva
-        ("decisor", 79, 2),
-        ("decisor", 0, 2),
-        ("decisor", None, 2),
-        ("nominal", 90, 3),
-        ("nominal", 0, 3),
-        ("nominal", None, 3),
-        ("corporativo_pequeno", 95, 4),
-        ("corporativo_pequeno", None, 4),
+        # Decisor: confidence threshold, ignora position (siempre es alto rango).
+        ("decisor", 95, "CEO", 1),
+        ("decisor", 80, "Director", 1),  # frontera inclusiva
+        ("decisor", 79, "Director", 2),
+        ("decisor", 0, "Gerente", 2),
+        ("decisor", None, "Gerente", 2),
+        ("decisor", 95, None, 1),  # position no afecta a decisor
+        # Nominal: el cargo (position no vacío tras strip) decide bucket 3 vs 4.
+        # Paso 6.6: distinción explícita.
+        ("nominal", 90, "Project Manager", 3),  # con cargo
+        ("nominal", 0, "Engineer", 3),         # con cargo bajo confidence sigue 3
+        ("nominal", None, "Architect", 3),     # con cargo sin confidence sigue 3
+        ("nominal", 95, None, 4),              # SIN cargo (None)
+        ("nominal", 95, "", 4),                # SIN cargo (string vacío)
+        ("nominal", 95, "   ", 4),             # SIN cargo (solo espacios)
+        ("nominal", None, None, 4),
+        # Corporativo_pequeno: bucket 5 (era 4 hasta paso 6.5; paso 6.6 lo
+        # desplaza para abrir hueco al sub-bucket nominal-sin-cargo en 4).
+        ("corporativo_pequeno", 95, None, 5),
+        ("corporativo_pequeno", None, None, 5),
     ],
 )
-def test_assign_priority_table(email_type: str, confidence: int | None, expected: int) -> None:
-    assert assign_priority(email_type, confidence) == expected  # type: ignore[arg-type]
+def test_assign_priority_table(
+    email_type: str, confidence: int | None, position: str | None, expected: int
+) -> None:
+    assert (
+        assign_priority(email_type, confidence, position)  # type: ignore[arg-type]
+        == expected
+    )
+
+
+def test_assign_priority_nominal_con_cargo_gana_a_sin_cargo() -> None:
+    """Caso operativo de LENA (paso 6.6): jaime nominal-con-cargo
+    'Business Development Director' debe quedar priority=3, zaragoza
+    nominal-sin-cargo priority=4 — independientemente de confidence Hunter."""
+    jaime = assign_priority("nominal", 60, "Business Development Director")
+    zaragoza = assign_priority("nominal", 95, None)
+    assert jaime == 3
+    assert zaragoza == 4
+    assert jaime < zaragoza, "con-cargo debe preceder a sin-cargo en sort"
 
 
 def test_assign_priority_rejects_descartado() -> None:
@@ -182,6 +208,24 @@ def test_select_top_handles_none_confidence_last() -> None:
 
 def test_select_top_empty_input_returns_empty() -> None:
     assert select_top_candidates([], max_n=3) == []
+
+
+def test_select_top_nominal_con_cargo_gana_a_nominal_sin_cargo_alto_conf() -> None:
+    """Regresión paso 6.6: en LENA, jaime (nominal-con-cargo 'Business Development
+    Director', conf 60 por hipótesis) debe quedar primary antes que zaragoza
+    (nominal-sin-cargo, conf 95). El sort `(priority asc, confidence desc)`
+    enterraba esta distinción cuando ambos caían en priority=3; tras 6.6
+    jaime cae en bucket 3 y zaragoza en bucket 4 → orden correcto sin depender
+    del confidence."""
+    jaime = _cand("jaime@nozar.es", priority=3, confidence=60, email_type="nominal")
+    zaragoza = _cand("zaragoza@nozar.es", priority=4, confidence=95, email_type="nominal")
+    info = _cand("info@nozar.es", priority=5, confidence=70, email_type="corporativo_pequeno")
+    out = select_top_candidates([info, zaragoza, jaime], max_n=3)
+    assert [c.email for c in out] == [
+        "jaime@nozar.es",
+        "zaragoza@nozar.es",
+        "info@nozar.es",
+    ]
 
 
 # ─── 4. enrich_with_personas_extraidas ─────────────────────────────────────
@@ -283,15 +327,17 @@ def test_classify_and_filter_t3_accepts_decisor_corporativo_and_nominal() -> Non
         _contact("juan@acme.es", position="Director General", person_name="Juan", confidence=92),
         _contact("info@acme.es", confidence=70),
         _contact("maria@acme.es", position="Project Manager", person_name="María", confidence=80),
+        _contact("pedro@acme.es", person_name="Pedro Sin Cargo", confidence=85),
     ]
     out = classify_and_filter(raw, company)
     types = {c.email_type for c in out}
     assert types == {"decisor", "corporativo_pequeno", "nominal"}
-    # decisor priority 1 (conf 92), corporativo priority 4, nominal priority 3
+    # Paso 6.6: prio 1 decisor, 3 nominal-con-cargo, 4 nominal-sin-cargo, 5 corporativo.
     by_email = {c.email: c for c in out}
     assert by_email["juan@acme.es"].email_priority == 1
-    assert by_email["info@acme.es"].email_priority == 4
     assert by_email["maria@acme.es"].email_priority == 3
+    assert by_email["pedro@acme.es"].email_priority == 4
+    assert by_email["info@acme.es"].email_priority == 5
 
 
 def test_classify_and_filter_t2_blocks_corporativo_pequeno() -> None:
@@ -353,12 +399,14 @@ def test_classify_and_filter_t2_with_personas_extraidas_can_promote_to_decisor()
 
 
 def test_classify_and_filter_t1_accepts_a3_nominal_sin_cargo() -> None:
-    """T1 acepta nombre-sin-cargo como nominal (regla A3 §8.5)."""
+    """T1 acepta nombre-sin-cargo como nominal (regla A3 §8.5).
+    Paso 6.6: ahora priority=4 (era 3 hasta 6.5)."""
     company = _company(tier="T1", web="x.es")
     raw = [_contact("juan@x.es", person_name="Juan Pérez")]
     out = classify_and_filter(raw, company)
     assert len(out) == 1
     assert out[0].email_type == "nominal"
+    assert out[0].email_priority == 4
 
 
 def test_classify_and_filter_descarta_negativos() -> None:

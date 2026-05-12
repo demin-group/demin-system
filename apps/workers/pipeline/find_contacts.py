@@ -107,13 +107,31 @@ def resolve_domain_from_company(web: str | None) -> str | None:
     return f"{extracted.domain}.{extracted.suffix}".lower()
 
 
-def assign_priority(email_type: EmailType, confidence: int | None) -> int:
-    """Mapping de prioridad (D18 + D20):
+def assign_priority(
+    email_type: EmailType,
+    confidence: int | None,
+    position: str | None = None,
+) -> int:
+    """Mapping de prioridad (D18 + D20, refinado paso 6.6 con sub-bucket nominal):
 
         1 = decisor con confidence >= 80
         2 = decisor (confidence < 80, o sin confidence reportada)
-        3 = nominal
-        4 = corporativo_pequeno
+        3 = nominal CON cargo identificado (position no vacío)
+        4 = nominal SIN cargo identificado
+        5 = corporativo_pequeno
+
+    Dentro del bucket nominal, el cargo claro (Director, Manager, Engineer,
+    Architect, etc. — roles que `classify_email` no eleva a decisor estricto
+    pero existen como función) prevalece sobre el desempate por `confidence`
+    en `select_top_candidates`. Lección 29: una persona identificada con
+    función conocida es mejor primary que una persona sin función conocida
+    aunque la confianza del email finder sea más alta. El campo `confidence`
+    mide calidad del email (sintaxis, fuente Hunter), NO calidad del rol.
+
+    `position` se considera "vacío" si es `None` o un string que tras `strip()`
+    queda vacío. La distinción se hace tras `enrich_with_personas_extraidas`,
+    que rellena `position` desde `research_data.personas_extraidas` cuando
+    Hunter devolvió nombre sin cargo.
 
     `descartado` no debería llegar aquí — `is_acceptable_for_tier` lo filtra
     antes. Si llega, levantamos para que un fallo en el flujo sea ruidoso.
@@ -123,9 +141,11 @@ def assign_priority(email_type: EmailType, confidence: int | None) -> int:
             return 1
         return 2
     if email_type == "nominal":
-        return 3
-    if email_type == "corporativo_pequeno":
+        if position is not None and position.strip():
+            return 3
         return 4
+    if email_type == "corporativo_pequeno":
+        return 5
     raise ValueError(
         f"assign_priority no soporta email_type={email_type!r} "
         f"(descartado debería estar filtrado antes)"
@@ -224,7 +244,9 @@ def classify_and_filter(
                 company.nif, enriched.email, cls.email_type, cls.reason,
             )
             continue
-        priority = assign_priority(cls.email_type, enriched.confidence)
+        priority = assign_priority(
+            cls.email_type, enriched.confidence, enriched.position
+        )
         out.append(
             CandidateContact(
                 email=enriched.email.strip().lower(),
