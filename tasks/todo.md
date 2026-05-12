@@ -1070,7 +1070,7 @@ Eso es v2 si tiene sentido, no antes.
     - [x] `/settings` dashboard con pausa de emergencia + reanudar (Apéndice A regla 6).
 
     **Bloqueadores humanos pendientes antes del primer envío real**:
-    - **(B1) Gmail OAuth** — Google Cloud Console (cuenta Gonzalo): proyecto + Gmail API enabled + OAuth client (Desktop o Web) con scope `gmail.send`. Flow OAuth standalone para `gonzalo.perez@demingroupmadrid.com` → guardar refresh_token en `mailboxes.oauth_refresh_token_encrypted` (Supabase Vault). Sin esto, `send_gmail.py` aborta con exit code 2.
+    - **(B1) Gmail OAuth** — Google Cloud Console (cuenta Gonzalo): proyecto + Gmail API enabled + OAuth client (Desktop) con scope `gmail.send`. Flow OAuth standalone para `gonzalo.perez@demingroupmadrid.com` → guardar refresh_token en `mailboxes.oauth_refresh_token_encrypted`. Scripts auxiliares listos (2026-05-12): `scripts/gmail_oauth_setup.py` corre el flow OAuth (descarga credentials.json + browser local) y `scripts/seed_oauth_token.py` persiste el token en BD (intenta Supabase Vault, fallback plaintext con prefijo `PLAINTEXT:`). `send_gmail.resolve_refresh_token` soporta los 3 formatos (UUID Vault / PLAINTEXT prefix / plaintext directo) en runtime. Sin B1 resuelto, `send_gmail.py` aborta con exit code 2.
     - **(B2) Despliegue dashboard prod** — `app.demingroupmadrid.com`. Ver §19 entrada 2026-05-12 paso 7 sub-sección "Instrucciones B2".
     - **(B3) Hunter Starter API key** (PM pagando 2026-05-12) — sustituir `HUNTER_API_KEY` en `.env.prod` cuando llegue. Subir `DEFAULT_MAX_HUNTER_CALLS` de 20 a 100 en `find_contacts.py` (decisión PM 1.6 paso 7).
     - **(B4) ALLOWED_EMAILS en Vercel prod** — coordinar `gonzalo.perez@demingroupmadrid.com,albertobueno10@gmail.com` como whitelist.

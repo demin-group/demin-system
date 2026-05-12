@@ -13,6 +13,7 @@ import pytest
 
 from outreach.send_gmail import (
     _FOOTER,
+    _UUID_RE,
     build_full_body,
     classify_error_as_bounce,
     is_business_hours,
@@ -109,6 +110,26 @@ def test_footer_separator_is_rfc_3676() -> None:
     """Separador estandar de firma '-- \\n' (RFC 3676). Clientes de email
     lo usan para detectar y plegar/colapsar firma."""
     assert "\n-- \n" in _FOOTER
+
+
+# --- 2b. _UUID_RE (regex usado por resolve_refresh_token) ---------------------
+
+
+@pytest.mark.parametrize(
+    "value,is_uuid",
+    [
+        ("550e8400-e29b-41d4-a716-446655440000", True),
+        ("550E8400-E29B-41D4-A716-446655440000", True),  # uppercase ok
+        ("550e8400e29b41d4a716446655440000", False),  # sin dashes
+        ("550e8400-e29b-41d4-a716", False),  # incompleto
+        ("PLAINTEXT:1//0eXXXXXXX", False),
+        ("1//0eXXXXXXXXXXXXXX", False),  # gmail refresh_token format
+        ("", False),
+        ("not-a-uuid-at-all", False),
+    ],
+)
+def test_uuid_regex_matches_only_canonical_uuids(value: str, is_uuid: bool) -> None:
+    assert bool(_UUID_RE.match(value)) is is_uuid
 
 
 # --- 3. classify_error_as_bounce -------------------------------------------

@@ -47,6 +47,7 @@ import argparse
 import json
 import logging
 import random
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -75,6 +76,16 @@ _WORK_HOURS: list[tuple[int, int]] = [(9, 13), (15, 18)]
 
 _DEFAULT_MAX_SENDS = 5
 _DEFAULT_JITTER_MAX_MIN = 5
+
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+"""scripts/seed_oauth_token.py guarda 3 formatos en
+mailboxes.oauth_refresh_token_encrypted: UUID (Vault secret id),
+'PLAINTEXT:<token>' (Vault no disponible, plaintext con marca), o el
+refresh_token directo (legacy / seed manual). resolve_refresh_token
+los normaliza."""
 
 _BOUNCE_KEYWORDS = (
     "invalid to",
@@ -158,6 +169,42 @@ def build_full_body(generated_body: str) -> str:
 # --- Acceso a BD ----------------------------------------------------------
 
 
+def resolve_refresh_token(env: EnvName, raw: str | None) -> str | None:
+    """Resuelve el contenido de mailboxes.oauth_refresh_token_encrypted al
+    refresh_token real Gmail. Soporta 3 formatos que scripts/seed_oauth_token.py
+    puede haber persistido:
+
+    - UUID de Supabase Vault secret -> SELECT decrypted_secret FROM
+      vault.decrypted_secrets WHERE id = :uuid (caso happy con Vault).
+    - 'PLAINTEXT:<token>' -> strip prefijo (caso Vault no disponible).
+    - else -> asume plaintext directo (caso seed manual o legacy).
+
+    Devuelve None si raw es None/vacio. Levanta RuntimeError si UUID parece
+    valido pero vault.decrypted_secrets no devuelve nada (secret borrado o
+    permisos faltantes en el role)."""
+    if not raw:
+        return None
+    if raw.startswith("PLAINTEXT:"):
+        return raw[len("PLAINTEXT:"):]
+    if _UUID_RE.match(raw):
+        with get_session(env) as s:
+            decrypted = s.execute(
+                text(
+                    "SELECT decrypted_secret FROM vault.decrypted_secrets "
+                    "WHERE id = cast(:uuid as uuid)"
+                ),
+                {"uuid": raw},
+            ).scalar()
+        if not decrypted:
+            raise RuntimeError(
+                f"vault secret id={raw} no encontrado en "
+                "vault.decrypted_secrets. Secret borrado o el role actual "
+                "no tiene grant para leer la view."
+            )
+        return str(decrypted)
+    return raw
+
+
 def fetch_active_mailbox(env: EnvName) -> MailboxRow | None:
     """Devuelve el unico mailbox active. Si hay >1, devuelve el primero
     y loggea warning (estado anomalo -- Leccion 4 prescribe 1+warm standby)."""
@@ -187,7 +234,7 @@ def fetch_active_mailbox(env: EnvName) -> MailboxRow | None:
         display_name=r["display_name"] or r["email"],
         daily_cap=int(r["daily_cap"]),
         status=r["status"],
-        oauth_refresh_token=r["rt"],
+        oauth_refresh_token=resolve_refresh_token(env, r["rt"]),
     )
 
 
