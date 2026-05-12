@@ -753,6 +753,41 @@ La causa raíz no es la línea de código que faltaba; es de proceso: al planifi
 
 ---
 
+## 2026-05-12 — Lección 29: tiebreaker silencioso en sort_key es un bug en espera — ordenar dimensiones por su poder de discriminación operativa, no por su disponibilidad numérica
+
+**Contexto:** Sprint 4 paso 6.5 cerró el bug de envío simultáneo a múltiples contacts del mismo dominio añadiendo el filtro `is_primary=true` a `generate_draft.fetch_pending_contacts`. El cleanup recompute `is_primary` en BD dev — y dejó como primary de LENA CONSTRUCCIONES al nominal-sin-cargo `zaragoza@nozar.es` en lugar del nominal-con-cargo `jaime.nozaleda@nozar.es` (cargo "Business Development Director"). El humano (Alberto, en rol PM) detectó la incoherencia en auditoría del 6.5: ambos contacts caían en `email_priority=3` (bucket nominal único de `assign_priority`) y el sort `(priority asc, confidence desc)` resolvía el empate por confidence Hunter, donde zaragoza ganaba. Intuitivamente jaime es mejor primary porque su cargo identificado lo marca como perfil decisor con mayor probabilidad de respuesta — pero esa señal estaba enterrada bajo un desempate por confidence email.
+
+El bug no fue detectado por la suite de paso 4 ni 4b: `test_assign_priority_table` parametrizaba `("nominal", 90, 3)` y `("nominal", 0, 3)` afirmando que **da igual la confidence en nominal** — pero NO verificaba que da igual también el cargo. La cobertura confirmaba el comportamiento como deseable sin cruzar con la operativa real (mismo patrón que Lección 28 pero un nivel más fino: aquí el bug está en el **orden del sort**, no en el filtro).
+
+**Corrección humana:** Alberto detectó el primary equivocado durante la inspección de BD del paso 6.5 (`debug_contact_state.py`) y autorizó paso 6.6 inmediato antes de paso 7. Pidió revisar `assign_priority` para que dentro del bucket nominal, "con cargo" gane a "sin cargo" antes que el desempate por confidence. Implementación a criterio (sub-bucket numérico, tiebreaker en sort, sub-priority decimal — se eligió bucket 5 explícito para que el campo `email_priority` quede como single source of truth auditable desde SQL). Y pidió **capturar esto como lección distinta de la 28** — el patrón meta es diferente.
+
+**Regla resultante:**
+
+- **Antes de cerrar un sort_key sobre entidades operativas**, listar **todas** las dimensiones que el plan trata como distintas en operativa real, NO solo las que están disponibles como columnas numéricas. Confidence Hunter es señal de calidad del email (sintaxis, fuente del adapter); cargo identificado es señal de calidad del rol — y rol manda sobre email cuando ambos contacts entran al mismo buzón corporativo. El sort `(priority asc, confidence desc)` enterraba esa distinción haciendo invisible un tiebreak operativamente relevante.
+- **Las dimensiones cualitativas (presencia/ausencia de cargo, tipo de rol, sector ICP) deben preceder a las cuantitativas (confidence, score, recency) en el sort_key cuando ambas compiten en el mismo bucket.** Lo numérico es más fácil de incorporar porque siempre está disponible — pero esa disponibilidad es accidental, no operativa. Si el plan distingue dos dimensiones cualitativas distintas, codificarlas en el sort_key explícitamente; no delegar a un proxy numérico que "suele correlacionar".
+- **Tests de orden requieren cobertura adversarial**: insert 2 entidades donde la dimensión cualitativa y la cuantitativa apunten en sentidos opuestos (con-cargo + low-confidence vs sin-cargo + high-confidence), y verificar que el orden lo dicta la cualitativa. Un test que solo verifica orden cuando todas las señales alinean ("decisor confidence alto" → "nominal confidence alto" → "corporativo confidence alto") es coherente con cualquier sort lineal y no descubre el bug.
+- **Si una dimensión cualitativa importa para el sort pero no es columna en BD**, persistirla. En paso 6.6 el bucket 3 vs 4 va al campo `email_priority` (numérico, persistido) en vez de quedarse como un parámetro de runtime — porque ahí queda **auditable desde SQL ad-hoc** sin necesidad de re-correr la clasificación. Single source of truth.
+
+**Aplicable más allá de DEMIN:** cualquier sistema con prioridad multi-dimensional sobre entidades que se procesan en serie (cold outreach contacts, queue de tickets de soporte, candidate ranking, lead scoring). El instinto de codificador es "ordeno por el score numérico que ya tengo" cuando lo correcto es "codifico la dimensión que el dominio considera importante aunque no sea numérica de origen". Lección hermana de la "ordering hierarchy" de los patrones de diseño de queue management.
+
+**Aplicado en:**
+- `tasks/todo.md` §3 D18: nota inline "Refinamiento paso 6.6 — dentro del bucket nominal, con cargo precede a sin cargo en `email_priority` antes que el desempate por confidence".
+- `tasks/todo.md` §8.5 punto 4 + bullet "Selección y priorización": enumeración explícita 1..5 con sub-distinción nominal-con-cargo (3) vs nominal-sin-cargo (4) + justificación operativa "cargo claro > confidence en bucket nominal".
+- `infra/supabase/migrations/20260512120000_10_email_priority_extend_to_5.sql`: CHECK constraint 1..5 + default 5 + COMMENT actualizado.
+- `apps/workers/pipeline/find_contacts.py` `assign_priority`: firma extendida a `(email_type, confidence, position=None)` con lógica nueva del bucket 5 y docstring que cruza la regla con §8.5 + esta lección.
+- `apps/workers/tests/test_find_contacts.py`:
+  - `test_assign_priority_table` parametrizada con 16 casos cubriendo `position` vacío/None/string-vacío + presencia de cargo por cada `email_type`.
+  - `test_assign_priority_nominal_con_cargo_gana_a_sin_cargo` documentando el caso real de LENA.
+  - `test_select_top_nominal_con_cargo_gana_a_nominal_sin_cargo_alto_conf` como regresión operativa: jaime priority=3 conf=60 + zaragoza priority=4 conf=95 → jaime primero (cobertura adversarial — dimensiones en sentidos opuestos).
+- `apps/workers/scripts/recompute_priorities_paso66.py`: re-cómputo de `email_priority` + `is_primary` sobre contacts existentes en dev tras el cambio.
+- `apps/workers/scripts/cleanup_paso66.py`: cancela messages pre-envío cuyo contact dejó de ser primary tras recompute (espejo de `cleanup_paso65.py` con razón distinta `paso66_primary_reassign`).
+- `tasks/todo.md` §19 entrada "2026-05-12 — Paso 6.6".
+- Esta lección.
+
+**Trigger de aplicación inmediata:** paso 7 y siguientes — cualquier worker que ordene/seleccione contacts o messages para acciones operativas. Cuando definamos sort sobre `replies` (paso 11+ Fase 3, categorización + priorización de respuestas), aplicar la misma pasada: listar dimensiones cualitativas del plan, asegurar que preceden a las numéricas, persistir cualitativas si importan al sort.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
