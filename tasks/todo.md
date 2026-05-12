@@ -126,7 +126,7 @@ Métricas operativas que sí trackeamos para diagnosticar (no como objetivo): bo
 | D19 | RocketReach descartado por API gateada al plan Ultimate ($2.484/año, excede techo D15). Hunter validado AMARILLO (8% hit rate decisor sobre 25 empresas SABI, commit 3c5b7a9). Plan revisado: probar **Skrapp y Apollo** (free tier con API) sobre el mismo sample 25 empresas con criterio dual (decisor + any email útil según D20). Adapter primario y secundario decididos tras prueba comparativa, no antes. La interfaz abstracta `EmailFinder` se mantiene. Sustituye a D17. | [DECIDIDO 2026-05-06] |
 | D20 | Política de aceptación de emails por tier de empresa. **T1 y T3** (1k-5k€ y 0.5k-1k€) aceptan decisor + nominal con cargo + corporativo_pequeno (whitelist positiva por prefijo: `info@`, `contacto@`, `gerencia@`, `obras@`, etc.). **T2** (5k-20k€) acepta decisor o nominal con cargo identificable; sin eso, fallback humano. **T4** (sin web) pendiente de resolver tras prueba comparativa (D19). Whitelist negativa global (todos los tiers): `marketing@`, `rrhh@`, `prensa@`, `noreply@`, etc. Razón: empresas micro/pequeñas no filtran `info@` — el gerente lo lee directamente; medianas sí filtran y exigen al menos email nominal. | [DECIDIDO 2026-05-06] |
 | D21 | **Arquitectura híbrida de email finder por tier** (camino 1 tras Frente E ROJO global 20%). El reanálisis Hunter+D20 sobre las mismas 25 empresas (commit 36d5077) dio **T3=80%** (production-ready) pero **T1=0%, T2=20%, T4=0%**. Apollo y Skrapp también descartados durante la sesión (Apollo people endpoints gateados Free, Skrapp API gateada Enterprise — Lección 21 aplicada por 4ª vez). Decisión: Hunter es adapter primario único viable; otros adapters quedan como hooks futuros tras la interfaz `EmailFinder`. Plan de cobertura por tier: **T3** = Hunter+D20 production-ready en Sprint 4. **T2** = Hunter+D20 + research IA enriquece-cargo en Sprint 4 paso 4 (sube estimado 20%→50-60%, validar empíricamente). **T1 y T4** = Opción C completa en Sprint 5 (research IA web + permutación de patrones email + verificación con MillionVerifier; T4 complementada con `empresite.com` como fuente de email visible). | [DECIDIDO 2026-05-06] |
-| D22 | **Roll-out escalonado de Sprint 4 productivo por tier**. **Semana 1 post-warmup: solo T3** (~51 empresas accionables tras `ia_fit='fit'` con cap inicial 10/día). **Semana 2-3: añadir T2** con research IA enriquece-cargo. **Semana 4+: mantenimiento** (revisión de métricas) + arrancar Sprint 5 (T1+T4 con Opción C) si reply rate de T3+T2 valida el sistema. Razón: empezar con leads de alta probabilidad de respuesta calienta dominio y genera baseline de reputación antes de escalar a leads inciertos. Los primeros ~100 envíos marcan la reputación de remitente para los siguientes ~1.000 — práctica industrial estándar capturada en Lección 27. | [DECIDIDO 2026-05-06] |
+| D22 | **Roll-out escalonado de Sprint 4 productivo por tier**. **Semana 1 post-warmup: solo T3** (~51 empresas accionables tras `ia_fit='fit'` con cap inicial 10/día). **Semana 2-3: añadir T2** con research IA enriquece-cargo. **Semana 4+: mantenimiento** (revisión de métricas) + arrancar Sprint 5 (T1+T4 con Opción C) si reply rate de T3+T2 valida el sistema. Razón: empezar con leads de alta probabilidad de respuesta calienta dominio y genera baseline de reputación antes de escalar a leads inciertos. Los primeros ~100 envíos marcan la reputación de remitente para los siguientes ~1.000 — práctica industrial estándar capturada en Lección 27. → **Refinamiento paso 7 (2026-05-12):** cap Semana 1 sube de 10 a **20/día** tras 2 semanas de Lemwarm con score 92 y reply rate 80%. Rampa nueva 20→25→30→40 (§9.3). Lección 30 captura el patrón. | [DECIDIDO 2026-05-06 · refinado 2026-05-12] |
 
 ---
 
@@ -670,8 +670,8 @@ Marca `email_verified = true/false`.
   - `hola@demingroup.es` (display name "DEMIN Group") — para 3º remitente
 - **DNS:** SPF, DKIM, DMARC desde el día 1. Sin esto, todo va a spam.
 - **Warmup:** conectar los 3 buzones a Lemwarm (~10-15€/buzón/mes). Mínimo 2 semanas de warmup antes de enviar nada en frío.
-- **Cap por buzón:** 10/día primera semana → +5/semana → tope 50/día. **Nunca pasar de 50/día por buzón.**
-- **Rampa de campaña:** primera semana 20 envíos/día totales, luego incremento gradual.
+- **Cap por buzón (rampa refinada en paso 7, 2026-05-12):** Semana 1 = 20/día, Semana 2 = 25/día, Semana 3 = 30/día, Semana 4+ = 40/día (tope absoluto = 50/día por §9.1; nunca superarlo). El cap original del plan era "10/día +5/sem"; los datos reales de Lemwarm tras 2 semanas de warmup (score 92, reply rate 80%) justificaron arrancar más alto (Lección 30, refinamiento de D22). `mailboxes.daily_cap` arranca en 20 (migration 11 seed).
+- **Rampa de campaña:** alineada con el cap por buzón (1 buzón activo según Lección 4 = cap_buzon = cap_campaña). 100 envíos en Semana 1 dan muestra estadística suficiente para evaluar bounce/spam/reply antes de subir.
 
 ### 9.2 Cadencia (la secuencia "demin_v1")
 
@@ -1057,10 +1057,32 @@ Eso es v2 si tiene sentido, no antes.
 - [x] **Paso 4b: `research_prospect.py` función dual (D21)** — dossier de personalización (D10 original, alimenta §10.2) + JSON output con `personas_extraidas: [{nombre, cargo_si_aparece, fuente_url}]` para enriquecer cargos T2 (§8.4). Implementado 2026-05-06 (commit ee10c54). `apps/workers/pipeline/research_prospect.py` (~600 líneas) + `apps/workers/shared/prompts/research_prospect.md` versionado (regla 8). Scraping httpx síncrono con UA Chrome desktop, home + 9 subpaths de §8.4, abort tras 4 fallos consecutivos, fallback https→http, threshold thin_html=500 chars (warning, no abort). Texto extraído con selectolax (sin script/style/nav/footer/header) concatenado con `--- <url> ---` como anchor para `personas_extraidas[].fuente_url`, truncado a 32k chars (~8k tokens). LLM Sonnet 4.6 vía `call_llm(task='research_prospect')`, parsing tolerante a code fences, validación tier-segmentada de campos (tamaño/tipo_obra/lenguaje filtrados a valores conocidos), defaults vacíos para campos faltantes. Cap defensivo `--max-cost-usd 5.0`. Idempotente con `--rerun` (re-procesa todo) y `--retry-failed` (solo las que tienen `_failed`) mutuamente exclusivos — añadido tras razonar que esperamos 7-17% de fallos por scraping ruidoso (SSL caduco, redirects, SPAs) + ruido transitorio de Anthropic, y un solo `--rerun` quemaría el universo entero ($0.56) para recuperar 8-15 fallos. 55 tests nuevos (283 totales verdes), mypy --strict sobre `research_prospect.py` limpio. Smoke real en dev sobre 3 T2 (`--limit 3 --max-cost-usd 0.50`): 2/3 OK (BRILLAS AGUSTI + RUTHERFORD con dossiers de calidad — hooks anclados al material real de la web), 1 falló con `llm_error` por Anthropic 529 overload (Sonnet 4.6 caído al momento del smoke, mismo patrón que Sprint 3 sesión 2026-05-04). Coste total $0.034. `--retry-failed` sobre la fallida volvió a fallar por mismo Anthropic 529 — comportamiento correcto del worker, recuperable cuando Anthropic se estabilice.
 - [x] **Paso 5: prompts** `generate_email_{opening,reframe,closing}.md` en `apps/workers/shared/prompts/` con bloque condicional por `email_type` (decisor/nominal/corporativo_pequeno, §10.2). Implementado 2026-05-06 (commit 31e6d72). 3 archivos versionados (regla 8). Bloque condicional implementado vía decisión C: el LLM autoregula leyendo la variable `{email_type}` del user template (más simple que marcadores en el .md o selección en código; valida que añadir un cuarto email_type futuro = añadir un párrafo). Sub-objetivos diferenciadores: opening = presentación + UN hook elegido + propuesta de conversación corta (sin `{correos_previos}`, primer toque); reframe (día +4) = no-respuesta sin presión + hook B distinto del A del opening + asunto distinto; closing (día +10) = cortesía + opción explícita "no insistir" + **pregunta sí/no estructurante** que fuerza categorización entre `no_ahora` y `no_interesado` para alimentar §11 + D13 (body ≤100 palabras, más corto que los otros dos). 53 tests estructurales nuevos (336 totales verdes): existencia + parsing, 9 variables comunes + `{correos_previos}` solo en reframe/closing, email_type×3 mencionado en system, identidad DEMIN/Gonzalo, regla sin emojis, JSON output con 3 keys, no-markdown, placeholders bien formados, sub-objetivos diferenciadores, versionado de cabecera. Sin smoke LLM en paso 5 — la señal "prompt produce JSON parseable y prosa coherente" sobre data dummy es parcial vs lo que paso 6 dará con 5 T3 reales + criterio Gonzalo, así que esperar al paso 6 da el filtro correcto sin un paso intermedio que no agrega información distinta.
 - [x] **Paso 6: validación E2E** sobre 5 empresas T3 reales (NO las 25 del Frente C — otras 5 al azar entre los `ia_fit='fit'` de prod) en HITL completo: research → find_contacts → generate_draft → cola aprobación. Implementado 2026-05-06 (commits b44913b + 64c2a8e + 66166b2). **Opción C** confirmada PM-side: `generate_draft.py` worker + `/pipeline` read-only en dashboard + script HITL terminal (`hitl_review.py`) + smoke E2E sobre 5 T3 reales en dev. Approval Queue dashboard difiere a paso 7. Smoke real: 5 T3 procesados por research_prospect (5/5 OK, $0.085, 0 personas_extraidas en 4/5 — confirma señal del paso 4b — y 3 personas extraídas en NOG INTERIORISMO — primera evidencia positiva), 5 procesados por find_contacts (1 contact insertado en NOG, cobertura Hunter T3 efectiva del smoke 20%, no el 80% del Frente E — señal a cruzar en paso 9), 4 drafts generados con calidad anclada al research real (1 nominal-con-cargo en LENA + 1 nominal-sin-cargo en LENA + 1 corporativo en LENA + 1 corporativo en NOG — las 3 variantes por email_type del paso 5 aplican correctamente en producción, decisión C validada). Coste total smoke: $0.18 LLM + 6 búsquedas Hunter (37→31 restantes). Validación humana posterior con `hitl_review.py` la hace Alberto/Gonzalo cuando lo decida. **Monitor de falsos positivos classify_descr** (PM nota): se detectaron **2 FPs en los 5 T3 reales** — SERVISHOP MANLOGIST (servishop.com vacío en Hunter, dudoso por el research) y SB 63 (pinnea.com) requieren auditoría humana del research dossier para confirmar/descartar. RUTHERFORD ESPAÑOLA del paso 4b queda como tercer FP probable. **Si la auditoría confirma >1 FP**, classify_descr necesita iterar antes de paso 7 (cruce explícito en paso 9).
-- [ ] **Paso 7: roll-out Semana 1 [cruza a Fase 2]** — solo T3 a cap 10/día con envío real Gmail API, monitoring bounce/spam/reply. Si bounce >2% o spam >0.1% en cualquier momento, parar y revisar antes de paso 8. **Pre-condiciones de arranque (PM gates acumulados)**:
-    - **(a) Auditoría humana de los 4 drafts del paso 6 con `hitl_review`**. Hasta que Alberto/Gonzalo confirme que ≥2 de 4 drafts son aprobables sin reescritura completa, paso 7 NO arranca. Razón: la validación E2E técnica del paso 6 demuestra que el flujo funciona; el gate de calidad literaria ("Gonzalo aprobaría esto") es lo que autoriza envío productivo.
-    - **(b) Decisión Hunter pago antes del primer envío**. Recálculo con dato Free real (50/mes) tras paso 6: 31 búsquedas restantes al cierre del 2026-05-06, reset 2026-06-06. Paso 7 con cap 10/día consume **50 búsquedas en 5 días** — Free aguanta ajustado los primeros 3 días (~30 búsquedas) y se agota antes de cerrar Semana 1. Sin urgencia (no bloquea arrancar), pero sí **necesario activar Starter (~30-45€/mes, 500 búsquedas/mes) antes del primer envío** para que el roll-out no se pare a media semana. NO activar por iniciativa propia — decisión humana.
-    - **(c) Monitor de cobertura Hunter T3 efectiva desde el día 1**. Smoke paso 6 dio 20% (1/5), Frente E proyectaba 80%. Divergencia muy grande (más del cuádruple) sin conclusión todavía — muestra de 5 es estadísticamente débil. **Si en los primeros 30-50 envíos paso 7 la cobertura efectiva queda en 20-30%, el supuesto operativo de toda la arquitectura T3 se cae y D21 hay que revisar entera** (cruce explícito en paso 9). Métrica a registrar desde envío 1: `(empresas con ≥1 contact aceptable) / (empresas T3 fit con web procesadas)`.
+- [ ] **Paso 7: roll-out Semana 1 [cruza a Fase 2]** — solo T3 a **cap 20/día** (refinado 2026-05-12, Lección 30) con envío real Gmail API, monitoring bounce/spam/reply. Si bounce >2% o spam >0.1% en cualquier momento, parar y revisar antes de paso 8.
+
+    **Construcción técnica cerrada 2026-05-12** (pre-requisitos de envío real):
+    - [x] Migration 11 + seeds mailbox `gonzalo.perez@demingroupmadrid.com` (cap 20) + sequence `demin_v1` (D+0/D+4/D+10) + campaign `T3 Semana 1` (aplicadas dev + prod).
+    - [x] `shared/gmail_adapter.py` con OAuth refresh_token + tenacity retry 429/5xx + tests MockTransport.
+    - [x] `outreach/send_gmail.py` con ventana 9-13/15-18 Madrid, jitter, cap rolling 24h, footer opt-out + firma + tests.
+    - [x] `outreach/follow_ups.py` programa step+1 cuando sent_at >= delta_days y sin reply (D+4 reframe, D+10 closing).
+    - [x] `outreach/auto_pause.py` vigila bounce 2% / spam 0.1% rolling 7d con sample minimo 50 (§9.4).
+    - [x] `/approval-queue` dashboard con server actions + keyboard nav (j/k/a/e/x/s).
+    - [x] `/metrics` dashboard read-only: embudo + rates 7d + coste mes.
+    - [x] `/settings` dashboard con pausa de emergencia + reanudar (Apéndice A regla 6).
+
+    **Bloqueadores humanos pendientes antes del primer envío real**:
+    - **(B1) Gmail OAuth** — Google Cloud Console (cuenta Gonzalo): proyecto + Gmail API enabled + OAuth client (Desktop o Web) con scope `gmail.send`. Flow OAuth standalone para `gonzalo.perez@demingroupmadrid.com` → guardar refresh_token en `mailboxes.oauth_refresh_token_encrypted` (Supabase Vault). Sin esto, `send_gmail.py` aborta con exit code 2.
+    - **(B2) Despliegue dashboard prod** — `app.demingroupmadrid.com`. Ver §19 entrada 2026-05-12 paso 7 sub-sección "Instrucciones B2".
+    - **(B3) Hunter Starter API key** (PM pagando 2026-05-12) — sustituir `HUNTER_API_KEY` en `.env.prod` cuando llegue. Subir `DEFAULT_MAX_HUNTER_CALLS` de 20 a 100 en `find_contacts.py` (decisión PM 1.6 paso 7).
+    - **(B4) ALLOWED_EMAILS en Vercel prod** — coordinar `gonzalo.perez@demingroupmadrid.com,albertobueno10@gmail.com` como whitelist.
+    - **(B5) Smoke E2E pre-envío real (decisión PM 1.5 paso 7)** — usar contact dev real (LENA jaime o NOG administracion) con `--override-to albertobueno10@gmail.com`. Verificar: OAuth flow, footer opt-out renderizado, gmail_message_id capturado, evento `message_sent` insertado. NO arrancar envío productivo (cap 20/día sobre T3) hasta validar este smoke.
+    - **(B6) HITL approval del primer batch productivo** — Gonzalo aprueba en `/approval-queue` web tras B1+B2+B4.
+
+    **Pre-condiciones operativas acumuladas del paso 6.5/6.6** (siguen vigentes):
+    - **(a) Auditoría humana de drafts** — tras paso 6.6 ya hay 2 drafts vivos correctos (jaime LENA primary + administracion NOG primary). PM aprobó ambos vía HITL. Compleción del gate de calidad literaria.
+    - **(b) Hunter Starter activación** — gestionado en B3.
+    - **(c) Monitor cobertura Hunter T3 efectiva** — smoke paso 6 dio 20% (1/5), Frente E proyectaba 80%. Métrica a registrar desde envío 1: `(empresas con ≥1 contact aceptable) / (empresas T3 fit con web procesadas)`. Si <30% en primeros 30-50 envíos, D21 hay que revisar.
+
+    **Condición de activación `verify_emails.py` durante paso 7** (decisión PM 1.2 paso 7): si **bounce rate >1% en el primer batch de 50 envíos**, construir `verify_emails.py` (§8.7) ANTES del paso 8. Hunter ≥60 confidence se asume suficiente; si la realidad muestra >1% bounce, ese supuesto cae y necesitamos verificación MX + SMTP probe explícita.
 - [ ] **Paso 8: roll-out Semana 2-3 [Fase 2]** — añadir T2 con `personas_extraidas` enriqueciendo cargos. Validar que el hit rate efectivo sube de 20% (Frente E) a 50-60% (estimado D21). Si no sube, parar y revisar `personas_extraidas` antes de continuar. **Verificar cobertura `personas_extraidas` con muestra grande** (PM nota tras paso 4b smoke): el smoke de paso 4b sobre 3 T2 dejó 0/2 OK con personas enriquecidas — señal a confirmar al correr research_prospect sobre las 49 T2 enteras. **Threshold operativo: si <30% de las T2 con research OK terminan con `personas_extraidas` no vacío, el supuesto D21 (hit rate 20%→50-60%) cae** y la decisión arquitectónica del paso 9 tiene que cruzar explícitamente esta señal en lugar de asumir que el flujo dual funcionó.
 - [ ] **Paso 9: cierre Sprint 4** — métricas reales de Semana 1+2-3, revisión post-Sprint Lección 19 (¿alguna decisión §3 invalidada? ¿§8 sigue alineado? ¿Sprint 5 con Opción C tiene suposiciones tumbadas?), entrada §19, decisión go/no-go Sprint 5. **Cruces explícitos obligatorios** (PM notas acumuladas durante el sprint): (a) D21 vs cobertura efectiva `personas_extraidas` medida en paso 8 — si <30% T2 OK con personas enriquecidas, el hit rate 20%→50-60% no se materializa y revisar arquitectura híbrida; (b) clasificación Sprint 3 vs falsos positivos detectados en paso 6 — si >1 FP confirmado en las 5 T3 reales (paso 6 ya identificó 2 candidatos: SERVISHOP MANLOGIST y SB 63 pinnea.com, más RUTHERFORD ESPAÑOLA del paso 4b), classify_descr necesita iterar antes de Sprint 5; (c) cobertura Hunter T3 efectiva vs Frente E (smoke paso 6 dio 20% sobre 10 empresas, frente al 80% que Frente E proyectaba sobre 5 — la divergencia merece análisis: ¿muestreo? ¿el ICP real T3 con web tiene peor cobertura Hunter de lo asumido?); (d) **pasada de saneamiento `mypy --strict` de `shared/` + `tsc --noEmit` del dashboard** — 4 deudas acumuladas (config.py:94, llm.py:72, llm.py:190, scripts/smoke_kb_e2e.ts:76/94/107), todas triviales individualmente pero acumuladas en módulos transversales merecen un arreglo conjunto al cerrar Sprint 4 o como primer paso de Sprint 5.
 
@@ -1168,15 +1190,14 @@ Definidos al final de cada fase (§14).
 | Google Workspace (1-2 buzones)        | 6-12€ (1 buzón ahora; +1 desde día 14)   |
 | Lemwarm Essential (1-2 seats)         | 29-58€ (idem; cada seat son 29€/mes)      |
 | Email finder — evaluación adapters (cerrada) | **0€** (Hunter probado AMARILLO/T3-verde, Apollo y Skrapp descartados sin gasto — Frentes C/D/E 2026-05-06) |
-| Email finder — adapter primario Hunter (D21) | **0€** free tier (25 búsquedas/mes) basta para T3+T2 del primer batch (~115 leads). Plan Starter ~30-45€/mes solo si se escala a más volumen tras Sprint 4 productivo |
+| Email finder — adapter primario Hunter (D21) | **30-45€/mes** (Starter, 500 búsquedas/mes) activado en paso 7 (2026-05-12). Free 50/mes no aguantaba el cap 20/día sostenido. PM autorizó el upgrade explícitamente. Régimen Sprint 4 productivo. |
 | Email finder — régimen mantenimiento  | 0€ esperable (free tier de Hunter cubre reposiciones puntuales tras procesar el universo SABI accionable) |
 | Anthropic API (uso normal) | ~20-30€ |
 | Embeddings (Voyage AI) | ~2-5€ |
 | Hetzner VPS CX22 | ~5€ |
 | Vercel | 0€ (free tier) |
 | Supabase | 0€ (free tier) |
-| **Total recurrente baseline** | **~75-95€/mes** (sin adapter pagado, hasta cierre prueba comparativa Sprint 4 paso 2) |
-| **Total durante procesamiento puntual del adapter primario** | **+0-45€/mes** durante ~1 mes (depende del adapter elegido y de su pricing); pico puntual absorbible dentro del techo D15 |
+| **Total recurrente paso 7 en adelante (Sprint 4 productivo)** | **~105-140€/mes** (Hunter Starter activado). Dentro de techo D15 (150€/mes) con margen ajustado. |
 
 **Coste actual evaluación adapters: 0€** (Hunter, Apollo y Skrapp probados/descartados sin gasto). Hunter es adapter primario con free tier (D21) — 25 búsquedas/mes basta para T3+T2 del primer batch; plan Starter solo si se escala más allá. Régimen estable Sprint 4 ~75-95€/mes con free tier de Hunter para reposiciones. Sigue dentro del techo D15 (150€/mes) con margen.
 
@@ -1869,6 +1890,79 @@ El primary actual de LENA es zaragoza (nominal **sin cargo**) en lugar de jaime 
 **Sub-issue 6.5/6.6 cerrado:** la cadena D18 + §8.5 + §9.2 + §10.1 + is_primary queda ahora coherente desde el plan hasta el código. Auditoría humana antes de paso 7 valida que hay **2 drafts vivos correctos** (jaime LENA primary + administracion NOG primary, ambos con prosa aprobada por humano).
 
 **Coste paso 6.6:** ~75 min trabajo. **$0.0188 LLM** (1 draft regenerado). 0 búsquedas Hunter (recompute es SQL puro). 0 cambios prod (pendiente migration 10 trivial).
+
+### 2026-05-12 — Paso 7 (pre-requisitos): construcción técnica completa + Lección 30 + Hunter Starter contratado
+
+**Alcance del cierre:** todos los pre-requisitos técnicos de paso 7 que Code puede construir sin bloqueadores humanos. El envío real productivo NO arranca aquí — bloqueado por B1 (Gmail OAuth), B2 (despliegue dashboard prod), B4 (ALLOWED_EMAILS prod) y B5 (smoke E2E pre-envío real con `--override-to`).
+
+**Construido (3 bloques, 11 sub-tareas, ~7h, suite 489 verde + 2 deselected):**
+
+**Bloque 0 — Migration 11 + seeds idempotentes** (commit `feat`):
+- `infra/supabase/migrations/20260512130000_11_seed_outreach_and_clean_seq_comment.sql`. Seeds: 1 mailbox (`gonzalo.perez@demingroupmadrid.com`, daily_cap=20, warmup_status='ready', status='active', oauth_refresh_token_encrypted=NULL pendiente B1), 1 sequence (`demin_v1` con steps D+0/D+4/D+10 alineados §9.2), 1 campaign (`T3 Semana 1`). Limpia comentario obsoleto de migration 02 que aún hablaba de D+0/D+12/D+30 (heredado del Bloque A pre-D22). NO añade 'paused' al CHECK de messages.status (decisión PM 1.4 paso 7 opción A: pausa solo a nivel mailbox).
+- Aplicada en dev y prod (`apply_migrations.py`). Verificado con SELECT post-apply.
+
+**Bloque 1 — Workers de envío + auto-pausa** (mismo commit feat):
+- `shared/gmail_adapter.py` (~290 líneas): cliente Gmail API por buzón. OAuth refresh_token → access_token con cache in-memory y refresh automático cuando quedan <60s. POST a `/messages/send` con RFC 2822 base64 url-encoded, headers In-Reply-To/References para follow-ups. Tenacity retry 3x sobre 429/5xx/timeout, 401 levanta `GmailAuthError` sin retry. SendResult dataclass con `success`/`gmail_message_id`/`error`/`http_status`. 13 tests MockTransport (sin credenciales reales).
+- `outreach/send_gmail.py` (~360 líneas): worker que envía messages approved. Guards: ventana 9-13/15-18 Madrid (`zoneinfo.ZoneInfo("Europe/Madrid")`, weekday only — fines de semana skip silencioso), mailbox active con refresh_token, cap rolling 24h via `count(events.type='message_sent')`. Footer opt-out + firma anexados al body (decisión PM 1.3 paso 7: NO en generate_draft). Jitter aleatorio 0-N min entre envíos (default 5). `--override-to` para smoke pre-envío real (decisión PM 1.5 paso 7). Clasifica 4xx no-auth en bounce sync vs failed según keywords ("Invalid To", "Recipient", "domain", etc.). 21 tests puros (is_business_hours, build_full_body, classify_error_as_bounce + footer).
+- `outreach/follow_ups.py` (~190 líneas): programa step+1 (reframe D+4, closing D+10) cuando step previo fue sent y sin reply. Lee sequences.steps. Llama `pipeline.generate_draft.process_one_contact` + `insert_draft` reusando lógica del paso 6. 3 tests puros (estimate_cost_usd + FollowUpStep).
+- `outreach/auto_pause.py` (~150 líneas): cada mailbox active, calcula bounce/spam rates 7d via events. Threshold §9.4 (bounce >2%, spam >0.1%) con sample mínimo 50 envíos. Pausa solo `mailboxes.status='paused'` + `pause_reason` (decisión PM 1.4 opción A) + INSERT event `mailbox_paused`. 11 tests puros (decide_pause_reason + MailboxStats properties).
+- `shared/config.py`: añadidos `GMAIL_OAUTH_CLIENT_ID`/`SECRET`/`REFRESH_TOKEN` + `SENDING_DOMAIN` (todos opcionales hasta B1).
+- Limpieza: borrado `outreach/generate_draft.py` (stub duplicado del worker real en `pipeline/`).
+- **Total bloque 1**: 48 tests nuevos (default suite pasa de 431 a 489). mypy --strict limpio en código nuevo (3 deudas pre-existentes en `shared/config.py:104` + `shared/llm.py:72,190` intactas — §14 deuda técnica).
+
+**Bloque 2 — Dashboard pantallas funcionales** (commit `feat dashboard`):
+- `/approval-queue` (sustituye PlaceholderPanel): server actions `approveMessageAction` + `rejectAndOptoutAction`. Client component `<ApprovalQueueContent>` con keyboard nav (j/k navegar, a aprobar, e editar+aprobar, x rechazar+optout, s skip). Editor inline subject + body. Aprobar registra `approved_by=user.email`+`approved_at=now()`. Rechazar marca contact `is_optout=true` + opt-out permanente (Apéndice A regla 2) + message cancelled con razón `hitl_rejected`. Cero regenerar via web — si Gonzalo quiere nueva prosa, edita inline (decisión simplicidad paso 7; regenerar web es feature Fase 3 cuando haya cola de jobs).
+- `/metrics` (sustituye PlaceholderPanel): RSC read-only. Embudo por messages.status (drafted/approved/scheduled/sent/bounced/failed/cancelled). Rates 7d (bounce/fail/reply via events + replies). Coste mes (SUM messages.generation_cost_usd month-to-date) + avg coste/draft. Bounce rate marca tono destructive si supera 2% con sample ≥50. Sin gráficas (refinamiento Fase 3 con datos reales).
+- `/settings` (sustituye PlaceholderPanel): RSC + server actions `emergencyPauseAction` + `resumeAllAction`. Pausa de emergencia (botón rojo + window.confirm) UPDATE mailboxes status='paused' WHERE active + INSERT events mailbox_paused. Reanudar todos UPDATE active + INSERT events mailbox_resumed. Apéndice A regla 6 reforzada en UI (texto explícito "has investigado el motivo antes de reanudar?"). Sin toggle HITL/autónomo, sin caps editables, sin horario configurable — Fase 3.
+- `tsc --noEmit` limpio en código nuevo (3 errores pre-existentes en `scripts/smoke_kb_e2e.ts` intactos — §14 deuda).
+
+**Bloque 3 — Plan + Lección** (commit `docs`):
+- `tasks/todo.md` §9.3: rampa nueva cap 20/25/30/40 (Sem 1→4+) con justificación inline (Lección 30).
+- `tasks/todo.md` §3 D22: nota inline "refinamiento paso 7 — cap 20/día Semana 1 tras Lemwarm score 92".
+- `tasks/todo.md` §14 paso 7: bullet reescrito con sub-tareas marcadas + bloqueadores humanos B1-B6 + pre-condiciones operativas heredadas paso 6.5/6.6 + **condición activación `verify_emails.py` durante paso 7** (si bounce >1% en primer batch 50 → construir antes paso 8, decisión PM 1.2 paso 7).
+- `tasks/todo.md` §17: Hunter Starter (~30-45€/mes) activado, total recurrente paso 7+ = 105-140€/mes. Margen vs techo D15 (150€/mes) sigue holgado.
+- `tasks/lessons.md` Lección 30: meta-patrón "los datos reales del warmup superan las asunciones conservadoras del plan original cuando estaba pre-warmup". Distinta de Lección 29 (tiebreaker silencioso) y Lección 28 (cruzar filtros con decisiones). Lección 30 cubre el patrón inverso: el plan dice X conservador, los datos del proveedor dicen Y mejor — actualizar plan, no operar con X obsoleto.
+- Esta entrada §19.
+
+**Instrucciones B2 (PM, despliegue dashboard prod)**:
+
+Cuando estés listo para activar `app.demingroupmadrid.com`:
+
+1. **Vercel project nuevo** (separado del proyecto actual de `apps/web/`):
+   - Crear nuevo proyecto Vercel apuntando a este repo, root directory `apps/dashboard`, build command `next build --turbopack`.
+   - Domain: añadir `app.demingroupmadrid.com` en Project Settings → Domains.
+
+2. **DNS Namecheap**:
+   - Añadir CNAME: `app.demingroupmadrid.com` → `cname.vercel-dns.com` (Vercel te da el target exacto al añadir el domain).
+   - TTL: Automatic (5 min) está bien para arranque.
+   - Verificar `nslookup app.demingroupmadrid.com` resuelve a Vercel tras propagación (≤30 min usual, hasta 48h teórico).
+
+3. **Env vars Vercel prod** (Project Settings → Environment Variables, scope = Production):
+   - `NEXT_PUBLIC_SUPABASE_URL` = URL del proyecto Supabase **prod** (`demin-prod`, ref `stxicalzpwrcjpaqdkdb`). Formato `https://<ref>.supabase.co`.
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = anon key prod (Project Settings → API en Supabase prod).
+   - `SUPABASE_SERVICE_ROLE_KEY` = secret key prod (Bitwarden `demin-supabase-prod-service-role`).
+   - `ALLOWED_EMAILS` = `gonzalo.perez@demingroupmadrid.com,albertobueno10@gmail.com` (whitelist auth middleware — B4).
+   - **NO añadir** las env vars de Gmail OAuth (`GMAIL_OAUTH_*`) — el dashboard no las usa directamente; los workers Python las leen de `.env.prod`. Tampoco `HUNTER_API_KEY` — solo workers.
+
+4. **Verificación post-deploy**:
+   - Visitar `https://app.demingroupmadrid.com/login`, login con magic link desde `gonzalo.perez@demingroupmadrid.com`. Debe redirigir a `/pipeline` tras click email.
+   - Si el email no whitelisteado intenta login, debe redirigir a `/login?error=unauthorized`.
+   - Visitar `/approval-queue` — debe mostrar "No hay drafts pendientes" (prod tiene 0 contacts hasta arrancar paso 7).
+   - Visitar `/metrics` — debe mostrar embudo todo a 0.
+   - Visitar `/settings` — mostrar mailbox `gonzalo.perez@demingroupmadrid.com` con status `active`, cap 20.
+
+5. **Después de B2 verificado**: resolver B1 (Gmail OAuth) → seed `oauth_refresh_token_encrypted` en prod → smoke E2E con `--override-to albertobueno10@gmail.com` (B5) → primer batch productivo HITL Gonzalo (B6).
+
+**Pendientes pre-envío real (orden esperado)**:
+
+1. B3 — Hunter Starter API key (PM ya pagando 2026-05-12). Cuando llegue, integro en `.env.prod` + actualizo memoria + subo `DEFAULT_MAX_HUNTER_CALLS` de 20 a 100.
+2. B1 — Gmail OAuth coordinación PM + Gonzalo. Resultado: refresh_token en `mailboxes.oauth_refresh_token_encrypted` (dev y prod).
+3. B2 — Despliegue dashboard prod (PM, instrucciones arriba).
+4. B4 — ALLOWED_EMAILS Vercel prod (parte de B2).
+5. B5 — Smoke E2E con `--override-to albertobueno10@gmail.com` en dev. Verificar: OAuth flow, footer renderizado, gmail_message_id, evento sent. Coste estimado: $0 (re-aprovecha drafts existentes de paso 6.6) + 0 búsquedas Hunter.
+6. B6 — Gonzalo HITL approval primer batch productivo en `/approval-queue` prod. Arranque envío real.
+
+**Coste paso 7 (pre-envío real)**: ~7h trabajo + $0 LLM + 0 búsquedas Hunter consumidas + 0 envíos reales. Coste recurrente desde aquí: +Hunter Starter (~30-45€/mes) cuando B3 active. Total proyectado régimen Sprint 4 productivo: 105-140€/mes (§17).
 
 ---
 

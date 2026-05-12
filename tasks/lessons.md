@@ -788,6 +788,43 @@ El bug no fue detectado por la suite de paso 4 ni 4b: `test_assign_priority_tabl
 
 ---
 
+## 2026-05-12 — Lección 30: las asunciones conservadoras del plan original sobre warmup deben revisarse contra datos reales del proveedor antes de fijar el cap operativo
+
+**Contexto:** Sprint 4 paso 7 — antes de arrancar la construcción de pre-requisitos de envío real, el PM (Alberto) detectó que el plan §9.3 fijaba cap inicial "10/día primera semana → +5/semana → tope 50/día" basado en estimación conservadora pre-warmup. La realidad operativa del momento, 2 semanas después de activar Lemwarm Essential sobre el buzón `gonzalo.perez@demingroupmadrid.com`, era distinta:
+
+- **Lemwarm deliverability score: 92** (sobre 100; >85 considerado production-ready según UI Lemwarm).
+- **Lemwarm internal reply rate: 80%** sobre el universo de warmup peers.
+- **2 semanas de warmup activo** (minimo prescrito por §9.1) cumplidas con holgura.
+- **Hunter Starter contratado** simultáneamente — 500 búsquedas/mes aguanta 20/día × 20 días sostenido con margen.
+- **Gonzalo aprueba ≤20 drafts/día** en `/approval-queue` sin saturarse (~30s/draft × 20 = 10 min/día de revisión humana).
+- **100 envíos/semana** dan muestra estadística suficiente para evaluar bounce/spam/reply rates antes de subir.
+
+El PM decidió: cap Semana 1 = **20/día** en lugar de 10/día. Rampa nueva 20→25→30→40 (Sem 4+) en lugar de 10→15→20→25 que el plan original prescribía.
+
+**Corrección humana:** el plan §9.3 fue escrito en sesión 2026-04-29 (Bloque A, pre-warmup, sin datos Lemwarm). Su número "10/día Semana 1" era prudencia razonable a falta de evidencia. Tras 2 semanas reales, el dato refuta el supuesto conservador. PM aplica regla 10 Apéndice A: corrección humana basada en datos del proveedor → §9.3 refinada + nota a D22 + esta lección.
+
+**Regla resultante:**
+
+- **Antes de fijar un cap o threshold operativo basado en una asunción del plan pre-validación**, revisar los datos reales del proveedor (Lemwarm dashboard, Postmaster Tools, Hunter quota, etc.) y comparar contra el supuesto. Si el supuesto resulta conservador (datos reales superan), subir el cap dentro del techo absoluto del proveedor (§9.1 dice 50/día por buzón, eso es el ceiling de Gmail Workspace, NO se toca). Si el supuesto resulta optimista, mantener el cap bajo y rampar más lento.
+- **Los caps deben venir parametrizados con su justificación operativa documentada** (Lemwarm score X, sample mínimo N, threshold proveedor Y). Sin ello, futuras revisiones no saben si el número es "lo que el plan dijo" (estimación) o "lo que los datos validaron" (refinamiento).
+- **Cambios de cap rampa requieren refinamiento del plan + Lección + nota inline en la decisión cerrada original** (D22 en este caso). NO reescribir silenciosamente el cap antiguo — preservar la cadena de evidencia: "10/día → 20/día porque Lemwarm score 92".
+- **El cap NO es decisión técnica unilateral del implementador**. Es decisión PM con datos del proveedor + capacidad humana (revisión HITL) + threshold proveedor. Code marca el supuesto del plan como entrada, no como ground truth.
+
+**Aplicable más allá de DEMIN:** cualquier sistema con caps operativos pre-validación (rate limits internos, throttling, batch sizes, retry counts) tiene este patrón. La estimación inicial es necesaria para arrancar pero requiere validación contra realidad antes de operar. La frase a buscar: "el plan dice X pero los datos del proveedor dicen Y" → revisar X.
+
+**Aplicado en:**
+- `tasks/todo.md` §9.3: rampa cap 20→25→30→40 (Sem 1→4+), tope 50/buzón (sin cambio).
+- `tasks/todo.md` §3 D22: nota inline de refinamiento paso 7.
+- `tasks/todo.md` §14 paso 7: bullet actualizado con cap 20/día + justificación inline.
+- `tasks/todo.md` §17: Hunter Starter contratado, total recurrente actualizado.
+- `infra/supabase/migrations/20260512130000_11_seed_outreach_and_clean_seq_comment.sql`: seed `mailboxes.daily_cap=20` + COMMENT actualizado con la rampa nueva.
+- Memoria de auto-memory `project_hunter_paid_plan.md`: pendiente actualizar cuando llegue API key B3 (Starter contratado, cap 100 hunter_calls).
+- Esta lección.
+
+**Trigger de aplicación inmediata:** paso 8 (Semana 2, subir cap a 25 si bounce <1% y reply >0). Paso 9 cierre Sprint 4 (revisar rampa contra datos reales 3-4 semanas). Sprint 5 cuando arranque T1+T4 (re-validar cap dada distribución diferente).
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
