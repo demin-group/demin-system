@@ -77,7 +77,7 @@ export function SettingsContent({ anyActive, anyPaused }: Props) {
         </h2>
         <p className="text-sm text-muted-foreground">
           Detiene todos los envios futuros sin afectar los ya enviados.
-          Reversible: el boton "Reanudar todo" devuelve los mailbox a active.
+          Reversible: el boton &quot;Reanudar todo&quot; devuelve los mailbox a active.
         </p>
       </CardHeader>
       <Separator />
