@@ -4,10 +4,15 @@
 !.env.example
 *.pem
 *.key
-# Gmail OAuth artifacts (generados por scripts/gmail_oauth_setup.py)
-.gmail_refresh_token_*.txt
-credentials.json
+# Gmail / OAuth artifacts (generados por scripts/gmail_oauth_setup.py)
+.gmail_refresh_token_*
+oauth_token*.json
+credentials*.json
 client_secret_*.json
+service-account*.json
+*-private-key*
+id_rsa
+id_rsa.*
 
 # ---- Node ----
 node_modules/
