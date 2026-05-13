@@ -439,3 +439,72 @@ def test_no_name_at_all_yields_none_person_name() -> None:
     assert contacts[0].person_name is None
     assert contacts[0].position is None
     assert contacts[0].source == "hunter"
+
+
+# ─── Lección 33 regla 6: no leak de api_key en httpx INFO logs ─────────────
+
+
+def test_httpx_logger_silenced_to_warning_after_import() -> None:
+    """Lección 33 regla 6 + tasks/todo.md:1698 (deuda cerrada 2026-05-13):
+    Hunter exige `api_key` como query param. httpx loguea por defecto en
+    INFO la URL completa de cada request, lo cual filtra la key en
+    cleartext a cualquier handler downstream. shared/hunter_adapter.py
+    y shared/llm.py llaman `logging.getLogger('httpx').setLevel(WARNING)`
+    al importarse para cortar el leak. Este test ancla esa garantía:
+    si alguien quita el setLevel o lo cambia a INFO, el test falla.
+
+    Detectado durante poblamiento prod B6 (2026-05-13) cuando find_contacts
+    pegó la key Hunter rotada (post-incident GitGuardian) en stdout. La
+    key estaba ya rotada así que el coste fue 0, pero el patrón habría
+    enmascarado un leak real si los logs viajaran a un sistema central."""
+    import logging
+
+    import shared.hunter_adapter  # noqa: F401 -- import triggers setLevel
+
+    httpx_logger = logging.getLogger("httpx")
+    # WARNING = 30. Cualquier valor >= WARNING oculta los logs INFO/DEBUG.
+    # Si llm.py o hunter_adapter dejan de hacer el setLevel, el logger
+    # vuelve a NOTSET (0) y este assert falla.
+    assert httpx_logger.level >= logging.WARNING, (
+        f"httpx logger level={httpx_logger.level} (< WARNING/30). "
+        "Lección 33 regla 6 violada -- restaura "
+        "logging.getLogger('httpx').setLevel(WARNING) en "
+        "shared/hunter_adapter.py + shared/llm.py."
+    )
+
+
+def test_httpx_request_with_api_key_not_emitted_at_info(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test end-to-end del silenciamiento: hacer un request a través del
+    adapter con `api_key='SUPERSECRETHEX123'` y verificar que ningún
+    record del logger `httpx` queda capturado conteniendo la key en
+    cleartext. Confiamos en que el logger `httpx` mantiene su level a
+    WARNING (no usamos `caplog.set_level(..., logger='httpx')` porque
+    eso re-habilitaría el leak que estamos validando). caplog adjunta
+    su handler a root con level DEBUG y captura todo lo que se emita,
+    pero solo se emiten records cuyo logger fuente los deja pasar."""
+    import logging
+
+    import shared.hunter_adapter  # noqa: F401 -- aplica setLevel
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": {"domain": "x.es", "emails": []}})
+
+    # caplog default level captura WARNING+ del root. Lo subimos a DEBUG
+    # SOLO para el root (no para 'httpx') para que cualquier record que
+    # el logger 'httpx' realmente emita aparezca aqui. Si el silenciamiento
+    # se rompe, veriamos INFO records con la URL en plaintext.
+    caplog.set_level(logging.DEBUG)
+    with _make_adapter(handler, api_key="SUPERSECRETHEX123") as h:
+        h.find_contacts_by_domain("x.es", "X")
+
+    leaks = [
+        r for r in caplog.records
+        if r.name == "httpx" and "SUPERSECRETHEX123" in r.getMessage()
+    ]
+    assert not leaks, (
+        f"httpx logger filtró la api_key en {len(leaks)} record(s):\n"
+        + "\n".join(f"  level={logging.getLevelName(r.levelno)} msg={r.getMessage()!r}" for r in leaks)
+        + "\nRevisa logging.getLogger('httpx').setLevel(WARNING) en shared/hunter_adapter.py + shared/llm.py."
+    )

@@ -49,6 +49,14 @@ if not logger.handlers:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
+# Lección 33 regla 6 + tasks/todo.md:1698 (deuda cerrada 2026-05-13): Hunter
+# acepta la API key SOLO como query param (`?api_key=…`). httpx INFO logs
+# pegaban la URL completa en cada request, dejando la key en cleartext en
+# stdout/Sentry/CloudWatch. WARNING+ oculta la URL sin perder los errores
+# de respuesta (4xx/5xx se logean con su propio logger demin.hunter).
+# Llamada idempotente: si llm.py ya la hizo, no cambia nada.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 _HUNTER_TIMEOUT_S = 30.0
 _HUNTER_DEFAULT_LIMIT = 10  # plan Free
 

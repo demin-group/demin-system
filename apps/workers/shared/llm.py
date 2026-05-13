@@ -40,6 +40,13 @@ if not logger.handlers:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
+# Lección 33 regla 6 + tasks/todo.md:1698 (deuda cerrada 2026-05-13): httpx
+# loguea URLs completas en INFO, incluyendo `?api_key=…` que algunos
+# proveedores (Hunter) exigen en query string. Subir a WARNING corta el
+# leak en cualquier handler downstream (Sentry/CloudWatch/ELK/sesion
+# Claude Code) sin perder errores HTTP. Llamada idempotente.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 # ─── enrutamiento por tarea (Lección 3) ─────────────────────────────────────
 MODEL_FOR_TASK: dict[str, str] = {
     "classify_descr": settings.ANTHROPIC_MODEL_CLASSIFY,

@@ -1967,6 +1967,21 @@ Cuando estés listo para activar `app.demingroupmadrid.com`:
 
 **Coste paso 7 (pre-envío real)**: ~7h trabajo + $0 LLM + 0 búsquedas Hunter consumidas + 0 envíos reales. Coste recurrente desde aquí: +Hunter Starter (~30-45€/mes) cuando B3 active. Total proyectado régimen Sprint 4 productivo: 105-140€/mes (§17).
 
+### 2026-05-13 — Paso 7 cierres: B1 prod + B5 smoke (2 envíos) + D26 footer + deuda httpx logging cerrada
+
+**Cierres operativos del día:**
+
+- **B1 prod cerrado** — `mailboxes.oauth_refresh_token_encrypted` poblado en BD prod (Vault secret `5018c531-e505-4f4a-a99f-a7a1ac9526ac`). Verificado end-to-end con `fetch_active_mailbox('prod')`. Decisión PM **D25** documentada: reusar credenciales OAuth de dev en prod (mismo GCP project `demin-group`, mismo Gmail Gonzalo) — descarta el "Fase 2 GCP project nuevo" del plan original como sobreingeniería para un solo mailbox.
+- **B5 smoke E2E cerrado** — 2 envíos reales a `albertobueno10@gmail.com` (gmail_ids `19e225c90c613612` NOG + `19e226d2da686bac` LENA). Smoke 1 reveló dos ajustes que PM pidió en **D26**: añadir cierre estándar al footer + tilde correcta en "Pérez". Smoke 2 validó el footer ajustado. PM verificó visualmente recepción a inbox principal Gmail (no spam/promociones), tildes en body sin corromper, display name correcto.
+- **D26 footer (cierre + tilde)** — `send_gmail._FOOTER` actualizado con 2 líneas de cierre ("Quedo atento a vuestra respuesta," + "Un abrazo,") antes del separador RFC 3676 + tilde U+00E9 en firma. Tests nuevos en `test_send_gmail.py`: `test_footer_contains_standard_closing`, `test_footer_perez_uses_utf8_e_acute`, + regression guard en `test_footer_contains_sender_identity`. §9.3 actualizada con la composición completa. UTF-8 ya garantizado en `gmail_adapter._build_raw_message` vía `MIMEText(_charset='utf-8')`.
+- **Deuda httpx logging cerrada (Lección 33 regla 6)** — `tasks/todo.md:1698` documentaba desde 2026-05-04 que `httpx` filtra URLs completas con `?api_key=…` en INFO logs. Durante el poblamiento prod B6 de hoy, el leak se materializó: `find_contacts` mostró 7 líneas con la key Hunter (post-rotación GitGuardian) en cleartext en stdout. PM autorizó cierre inmediato: `shared/llm.py` y `shared/hunter_adapter.py` ahora llaman `logging.getLogger("httpx").setLevel(WARNING)` al importarse (idempotente, cualquiera de los dos basta — están en ambos por independencia de import paths). Tests nuevos en `test_hunter_adapter.py`: `test_httpx_logger_silenced_to_warning_after_import` (ancla el level del logger) + `test_httpx_request_with_api_key_not_emitted_at_info` (test end-to-end con `api_key='SUPERSECRETHEX123'` ficticia, verifica que no aparece en records capturados). 501 tests workers pasan. Patrón de cierre: **deuda detectada durante operación productiva → cerrada en el mismo flujo, no aplazada**. Apéndice A regla 5 (no credenciales hardcoded) cubierta de raíz: aunque el código no hardcodee, los logs sí lo hacían — ahora ni código ni logs.
+- **B6 poblamiento prod iniciado** — 7 empresas T3 fit research_done (cap USD paró antes de la 8ª), 4 contacts insertados (2 `is_primary=true`: LENA Jaime + NOG administracion), 2 drafts `status='drafted'` en cola. Coste batch: $0.144 LLM + 7 búsquedas Hunter (de 2000 Starter, sub-cap PM 10). Tiempo: ~118s. Cobertura efectiva find_contacts confirmada: **28.6% en T3 prod** (2/7), alineado con el 20-30% del smoke dev paso 6 y NO con el 80% del Frente E que motivó D21. **Pendiente B6 cierre productivo:** Gonzalo entra a `/approval-queue` prod cuando esté disponible (PM coordina), aprueba o edita los 2 drafts, después `send_gmail --env prod` lanza envíos reales dentro de business hours.
+
+**Estado del paso 7 al cierre del día:**
+
+- B1 dev ✓ · B1 prod ✓ · B2 ✓ · B3 ✓ · B4 ✓ · B5 ✓ · D24 ✓ · D25 ✓ · D26 ✓ · Lección 31 ✓ · Lección 32 ✓ · Lección 33 (incluida regla 6 deuda httpx) ✓.
+- **Pendiente único:** B6 — Gonzalo HITL primer batch productivo.
+
 ---
 
 ## Apéndice A — Reglas no negociables (resumen para Claude Code)
