@@ -893,6 +893,33 @@ Code paró (criterio de parada 3 paso 7 + regla 9 Apéndice A) y pidió justific
 
 ---
 
+## 2026-05-13 — Lección 33: copiar logs/observaciones en docs del repo es un vector de leak de secrets tan real como pegar configs — `httpx` y similares loguean URLs completas con `?api_key=…` en cleartext
+
+**Hermana de Lección 31** (secrets en chat por inercia) pero en otro vector: la doc operativa del repo. Lección 31 cubre el canal *chat humano↔Code*; Lección 33 cubre el canal *log → copy/paste → archivo versionado*.
+
+**Incidente real (paso 4 Sprint 4, 2026-05-04, commit `d623bf5`):** durante el cierre de paso 4 se documentó en `tasks/todo.md` §19 (línea 1698) una observación lateral legítima — "`httpx` loguea la URL completa de cada request en INFO, incluyendo `?api_key=…` en cleartext, riesgo si los logs viajan a Sentry/CloudWatch/ELK". El problema: **el ejemplo se pegó con la API key real de Hunter en lugar de un placeholder**. Quedó dormido 9 días hasta que GitGuardian lo detectó (2026-05-13) y notificó por email. PM rotó key inmediatamente, se redactó la línea, se redactó la nueva key con placeholder `<REDACTED-2026-05-13-tras-leak-GitGuardian>`. Coste: pánico de 30min + decisión sobre purga de history (git-filter-repo + force push) pendiente al cierre de esta lección.
+
+**Por qué Lección 31 no lo previno:** Lección 31 codifica "secrets en chat = pasan, no fingirlo". Pero el threat model ahí era *chat efímero entre humano y Code*. El leak de hoy ocurrió en el otro canal: **doc estática versionada, con el secret incrustado como "ejemplo realista" en una observación técnica genuina**. El operador (yo, Code) no flagué porque la observación era válida y el contexto era "deuda técnica documentada", no "credencial expuesta". La ceguera fue: tratar la línea como narrativa técnica, no como string que va a `git log`.
+
+**Regla operativa (cubre lo que Lección 31 no cubre):**
+
+1. **Cualquier string en `tasks/`, `docs/`, comments de código o commits que se parezca a un secret debe ir con placeholder, no con valor real.** Patrones: hex largo (≥32 chars), JWTs (`eyJ…`), `Bearer …`, `Basic …`, `sk_…`, `1//…` (Google refresh_token), `xoxb-…` (Slack), `?api_key=`/`?token=` en URLs, paths con `/credentials/`/`/secrets/`. Si dudas → placeholder.
+2. **Cuando copies output de comando que invocó un secret** (curl, httpx logs, scripts de probe), revisa el output ANTES de pegarlo en un archivo. Si el secret aparece en query params, headers, o body de error → reemplaza por `<REDACTED>` o `<API-KEY>` antes de hacer commit.
+3. **Documentar observaciones técnicas sobre secrets (como esta de `httpx`) sin pegar el secret real**. Forma correcta: *"`httpx` loguea URLs completas incluyendo `?api_key=<key real>` en cleartext"* — el placeholder hace la observación igual de clara sin crear deuda.
+4. **Pre-commit / git hook eventual** (`detect-secrets` o `gitleaks` en `.pre-commit-config.yaml`) como red de seguridad de defensa en profundidad, NO como sustituto del protocolo arriba. La detección por terceros (GitGuardian → email) llegó tarde: la rotación se hizo 9 días después del leak.
+5. **Cuando se redacta retrospectivamente** (como hoy con la key Hunter en línea 1698): nota explícita en la propia línea citando fecha + razón + lección, para que la deuda técnica documentada NO se pierda con la redacción. Forma: `... <REDACTED-YYYY-MM-DD-tras-leak-<source>>. <NN-NN>: la versión original ... Lección NN en lessons.md.`
+
+**Diferencia con Lección 31 — clarificación:**
+
+- Lección 31 → "PM pega secrets en chat". Threat model: `chat efímero` + `humano confunde Code con sysadmin`. Mitigación: ofrecer canal alternativo (filesystem) y aceptar el riesgo si PM lo asume.
+- Lección 33 → "secrets entran en docs del repo por copia descuidada". Threat model: `git permanente` + `Code y humano copian outputs sin sanear`. Mitigación: protocolo de placeholder + revisión de output antes de commit + hook eventual.
+
+**Coste real del leak (registrado para calibrar futuras decisiones):** key rotada (gratis, mismo plan Starter), 9 días de exposición histórica en commits `d623bf5..HEAD~1`, redacción de HEAD (1 commit), purga de history pendiente decisión PM (force push a `main`). Bajo riesgo de uso por terceros (key seguía siendo válida al detectarse, no se observó tráfico anómalo en quota Hunter — 0 búsquedas usadas tras rotación con la key nueva), pero el riesgo de "qué pasa si OTRO scraper de claves la encuentra en el commit antes que GitGuardian" no se puede medir retrospectivamente. Decisión: aplicar protocolo arriba como NO negociable para todo `tasks/`, `docs/`, commits y comments de aquí en adelante.
+
+**Trigger de aplicación inmediata:** siguiente vez que vaya a documentar una observación técnica que incluya un secret real (output de probe, log de error, ejemplo de config) en cualquier archivo versionado — pasar el contenido por el protocolo de 5 reglas arriba antes de Edit/Write. Si dudas si una string es un secret, asumir que sí y redactar; el coste de un placeholder de más es cero, el coste de un secret de más son días de pánico.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
