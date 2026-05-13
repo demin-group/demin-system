@@ -99,14 +99,21 @@ _BOUNCE_KEYWORDS = (
 """Substrings (case-insensitive) en el mensaje de error 4xx Gmail que
 clasificamos como bounce sincrono. El resto de 4xx -> 'failed'."""
 
-# Footer fijo (decision PM 2026-05-12 D24 paso 7 pre-B5). §9.3 derogada
-# en su linea de opt-out -- ver D24 + Leccion 32 para justificacion y
-# riesgo aceptado. Separador estandar '-- \n' (RFC 3676). Telefono
-# `+34 692 319 217` verificado contra dossier comercial + onboarding PDF
-# (docs/). Plaintext puro (§9.3 mantiene plain text para deliverability).
+# Footer fijo (decision PM 2026-05-12 D24 + ajuste 2026-05-13 D26 cierre
+# estandar + tilde Perez). §9.3 derogada en su linea de opt-out -- ver D24
+# + Leccion 32 para justificacion y riesgo aceptado. Separador estandar
+# '-- \n' (RFC 3676). Telefono `+34 692 319 217` verificado contra
+# dossier comercial + onboarding PDF (docs/). Plaintext puro UTF-8 (§9.3
+# mantiene plain text para deliverability). MIMEText _charset='utf-8'
+# en gmail_adapter._build_raw_message preserva la tilde sin escape.
 _FOOTER = (
-    "\n\n-- \n"
-    "Gonzalo Perez\n"
+    "\n\n"
+    "Quedo atento a vuestra respuesta,\n"
+    "\n"
+    "Un abrazo,\n"
+    "\n"
+    "-- \n"
+    "Gonzalo Pérez\n"
     "Responsable DEMIN Group\n"
     "demingroupmadrid.com\n"
     "+34 692 319 217"

@@ -105,13 +105,46 @@ def test_footer_does_NOT_contain_optout_text() -> None:
 
 
 def test_footer_contains_sender_identity() -> None:
-    """D24 (2026-05-12): footer compone nombre + rol + web + telefono.
-    Telefono `+34 692 319 217` verificado contra docs/ (dossier comercial
-    + onboarding PDF)."""
-    assert "Gonzalo Perez" in _FOOTER
+    """D24 (2026-05-12) + D26 (2026-05-13): footer compone nombre + rol +
+    web + telefono. D26 anadio tilde a Perez (era 'Gonzalo Perez' en el
+    smoke 1, PM pidio 'Gonzalo Pérez' con tilde alineado con display_name
+    From header). Telefono `+34 692 319 217` verificado contra docs/
+    (dossier comercial + onboarding PDF)."""
+    assert "Gonzalo Pérez" in _FOOTER  # con tilde (D26)
+    assert "Gonzalo Perez\n" not in _FOOTER  # regresion guard sin tilde
     assert "Responsable DEMIN Group" in _FOOTER
     assert "demingroupmadrid.com" in _FOOTER
     assert "+34 692 319 217" in _FOOTER
+
+
+def test_footer_perez_uses_utf8_e_acute() -> None:
+    """D26 (2026-05-13): la tilde en 'Pérez' debe ser el carácter
+    Unicode U+00E9 (é, UTF-8 0xC3 0xA9), no escape ni precomposed
+    distinto. MIMEText `_charset='utf-8'` en gmail_adapter lo preserva
+    correctamente; este test ancla la representacion en el codigo
+    fuente para evitar que un re-encoding accidental rompa la tilde."""
+    assert "\xe9" in _FOOTER  # é literal en source
+    assert _FOOTER.encode("utf-8").count(b"\xc3\xa9") >= 1  # bytes UTF-8 correctos
+
+
+def test_footer_contains_standard_closing() -> None:
+    """D26 (2026-05-13): cierre estandar antes del separador de firma --
+    PM pidio 2 lineas: 'Quedo atento a vuestra respuesta,' + 'Un abrazo,'
+    cada una en su parrafo con linea en blanco entre ambas y antes del
+    separador. Mantiene el body LLM intacto (CTA-pregunta del paso 5
+    sigue al final del body sin colision con el cierre)."""
+    assert "Quedo atento a vuestra respuesta," in _FOOTER
+    assert "Un abrazo," in _FOOTER
+    # Orden y espaciado: las dos lineas de cierre van separadas por linea
+    # en blanco entre ellas, y otra antes del separador RFC 3676.
+    closing_block = (
+        "\nQuedo atento a vuestra respuesta,\n"
+        "\n"
+        "Un abrazo,\n"
+        "\n"
+        "-- \n"
+    )
+    assert closing_block in _FOOTER
 
 
 def test_footer_separator_is_rfc_3676() -> None:
