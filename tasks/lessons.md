@@ -921,6 +921,77 @@ Code paró (criterio de parada 3 paso 7 + regla 9 Apéndice A) y pidió justific
 
 ---
 
+## 2026-05-13 — Lección 34: env vars del cloud target (Vercel/Render/Fly/etc.) deben auditarse cross-referenciando contra `.env.<env>` local del repo ANTES de declarar un deploy productivo cerrado — "parecen OK" no basta cuando hay 2 environments con FK schemas y seed idénticos
+
+**Contexto:** durante el cierre de B6 (Sprint 4 paso 7, 2026-05-13), Gonzalo entró a `https://demin-system.vercel.app/approval-queue` y vio "No hay drafts pendientes" pese a que la BD prod tenía 2 drafts confirmados con SQL directo y con reproducción del query exacto vía PostgREST. Tras ~40 min de debugging descartando hipótesis sobre RLS, embeds PostgREST anidados, deploy stale post-filter-repo, cache Next.js, y varias más, la causa raíz resultó ser combinada — la mitad **(Lección 35)** sobre Supabase Auth Site URL desviando a localhost, la otra mitad sobre **env vars cross-env**:
+
+- `SUPABASE_SERVICE_ROLE_KEY` en Vercel prod era el **JWT legacy de DEV** (`eyJ...`), no la `sb_secret_6El5MggRwc...` de prod.
+- Vino de un copy/paste antiguo (probablemente al crear el proyecto Vercel inicialmente, antes de que prod migrara al formato nuevo `sb_secret_*`).
+- Se camufló durante días porque la única vez que se había mirado el dashboard prod, PM acabó en localhost (Lección 35). Y nadie había validado un read sobre `messages` desde Vercel real hasta el momento del HITL.
+
+PM verificó el bug comparando 50 chars de la legacy JWT en Vercel contra la legacy JWT que Supabase mostraba en el proyecto prod — no coincidían. Por descarte, era la del proyecto dev.
+
+**Corrección humana:** PM hizo el cross-reference de JWTs manualmente (50 chars). Antes de eso, mi diagnóstico había avanzado por descarte (RLS, embeds, cache, force-push), todo correcto pero todo PARALELO al bug real. No tenía visibilidad sobre los values de Vercel, así que no podía cerrar el caso solo — el bug solo se diagnostica con datos del cloud target.
+
+**Regla resultante (cubre tanto pre-deploy como post-incident):**
+
+Antes de cualquier deploy de producción de un servicio con env vars sensibles (Vercel, Render, Fly, Cloud Run, Railway, etc.), y tras CUALQUIER incidente que sospeche de config:
+
+1. **Listar TODAS las env names** del environment de cloud target. Comando: `vercel env ls production` (Vercel CLI) o copiar del UI.
+2. **Cross-referenciar uno a uno** contra `.env.prod` (o equivalente canónico en el repo) usando `comm -3 <(sort cloud-names.txt) <(grep -oE '^[A-Z_]+=' apps/<service>/.env.prod | tr -d = | sort)` para detectar omitidos en ambas direcciones.
+3. **Comparar prefijo + longitud** (no el value exacto — el local puede ser placeholder o legacy format). Si la canónica es `sb_secret_*` (41 chars) y la del cloud es `eyJ...` (200+ chars), es mismatch ruidoso. Si la canónica es URL `https://stxicalzpwrcjpaqdkdb.supabase.co` y la del cloud apunta a otro subdominio, también.
+4. **Validar funcionalmente AL MENOS UN READ** sobre cada tabla crítica desde el cloud target (no solo desde local) ANTES de invitar a usuarios externos. En este caso: una llamada de smoke a `SELECT * FROM messages LIMIT 1` desde el dashboard Vercel (no desde mi PostgREST local) habría detectado el bug instantáneamente.
+5. **Auditoría obligatoria tras INCIDENTE de env vars:** si UNA env var estaba mal en el cloud, asumir que pueden estar mal MÁS y auditar TODO el set, no solo la flagged. Pendiente para próximo turno (PM autorizó): auditar `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, `HUNTER_API_KEY`, `DATABASE_URL`, `ALLOWED_EMAILS`, modelos LLM, etc. en Vercel.
+
+**Why:** los env vars cross-env (dev↔prod) son una fuente de bugs en producción difícilmente diagnosticables porque NO fallan ruidosamente. Una key de dev en un cloud prod puede:
+
+- **Funcionar para algunas tablas y no para otras** — la key de dev contra prod URL devolvió 401 silencioso en `messages` pero PostgREST/Next.js no propagó el error, terminando como `data=[]`. Si la URL hubiera sido también la de dev, todo habría funcionado contra dev (FKs idénticas, schema idéntico).
+- **Hacer aparecer datos del proyecto wrong sin distinción visual** — dev y prod tienen el mismo seed (5578 companies), así que `/pipeline` mostraba 5578 en cualquier configuración. El conteo NO discrimina. Las únicas tablas discriminadoras eran `messages` y `mailboxes.current_day_sent`, pero solo se miran en pantallas específicas.
+- **Sobrevivir auditorías superficiales** — PM verificó URL ✓ y ANON_KEY ✓ (con valores correctos en Vercel), pero NO el SERVICE_ROLE_KEY. La regla mata exactamente este sesgo: auditar **todas** las env vars, no solo las que se sospechan a primera vista.
+
+**How to apply:** próximo turno (auditoría env vars Vercel pendiente). Y para CUALQUIER próximo deploy en cloud: aplicar el protocolo de 5 pasos antes de declarar "deploy cerrado". Coste extra: ~5 min de cross-reference. Coste de saltar: 40 min de debugging con conclusiones potencialmente erróneas, usuarios externos esperando (Gonzalo).
+
+---
+
+## 2026-05-13 — Lección 35: Supabase Auth `Site URL` debe ser la URL canónica de producción ANTES del primer magic link a un usuario externo — localhost va en Redirect URLs whitelist, NUNCA en Site URL
+
+**Contexto:** durante el cierre de B6 (Sprint 4 paso 7, 2026-05-13), PM reportó que `/approval-queue` mostraba "No hay drafts pendientes" pese a BD prod con 2 drafts. Yo descarté varias hipótesis sobre RLS, embeds PostgREST, cache Next.js, deploy stale post-filter-repo. La mitad del bug resultó ser env vars (Lección 34), pero la OTRA MITAD que confundió todo el flow:
+
+- **`Site URL`** en Supabase Auth del proyecto prod estaba como `http://localhost:3000` (de cuando PM empezó a desarrollar el dashboard local).
+- PM había pedido un magic link DESDE su localhost días antes para testear el flow auth.
+- El magic link enviado por Supabase llevaba como redirect el `emailRedirectTo` del client: `window.location.origin + '/auth/callback'` = `http://localhost:3000/auth/callback`. Esto es coherente con el código `login-form.tsx:32`.
+- PM clicó el link ANTIGUO desde Gmail (días después, ya en el flow productivo). Lo abrió en nueva pestaña.
+- El link iba a `http://localhost:3000/auth/callback?code=...`. PM tenía `next dev` corriendo en local (con `.env.local` apuntando a BD dev). La sesión se completó allí.
+- **PM creía que estaba en `demin-system.vercel.app`** — el dashboard visual es idéntico, el dominio en la barra de direcciones lo miró por encima y el flow de auth no es ruidoso sobre dónde acaba. En realidad estaba en `localhost:3000` con BD dev.
+
+Síntomas que generaba: `/pipeline` 5578 empresas ✓ (coincide ambas BD), `/metrics` 2 sent + 3 cancelled (coincide con dev tras smokes B5), `/approval-queue` 0 drafts (coincide con dev — los drafts dev ya estaban sent post-B5).
+
+**Corrección humana:** PM detectó la causa tras revisar con más calma la URL real del browser. La mismísima pista que yo no le pedí explícitamente al principio (DevTools Network o URL bar). Captura el patrón meta: cuando los datos no coinciden con lo esperado, **antes** de hipótesis sobre código/RLS/keys, **verificar que estás mirando lo que crees que estás mirando**.
+
+**Regla resultante:**
+
+Para CUALQUIER proyecto que use Supabase Auth con magic links u OAuth, antes del primer link enviado a un usuario externo (Gonzalo, clientes, beta testers):
+
+1. **`Site URL`** en Supabase Dashboard → Authentication → URL Configuration debe ser el **dominio canónico de producción** (e.g. `https://demin-system.vercel.app`). NUNCA `http://localhost:PORT`. Site URL es el FALLBACK que Supabase usa cuando el `emailRedirectTo` solicitado no matchea ningún Redirect URL whitelisted; si Site URL es localhost, ese fallback dirige a localhost.
+2. **Redirect URLs whitelist** puede incluir tanto prod como localhost (paths específicos o wildcards `/**`). Permitir login local en dev NO compromete prod, mientras Site URL sea prod.
+3. **Wiring final correcto** (cuño para próximos proyectos):
+   ```
+   Site URL: https://<prod-domain>
+   Redirect URLs:
+     https://<prod-domain>/auth/callback
+     https://<prod-domain>/**
+     http://localhost:3000/auth/callback
+     http://localhost:3000/**
+   ```
+4. **Smoke obligatorio antes de invitar usuario externo:** pedir magic link desde browser fresh (incógnito) en la URL de prod. Abrir DevTools Network → verificar que el link en el email arranca con `https://<prod-domain>/auth/callback?code=...`, NO con `localhost`. Si arranca con localhost, parar — Site URL/whitelist mal configurado.
+5. **Recomendación operativa para sesiones mixtas dev+prod:** usar perfil/ventana de incógnito separado para dev local. Cookies de `demin-system.vercel.app` y `localhost:3000` son técnicamente independientes pero un usuario en la misma sesión browser puede acabar autenticado en uno y mirar otro sin notarlo. PM tuvo este síntoma exacto.
+
+**Why:** un magic link mal-direccionado contamina TODO el debugging downstream porque el bug es "los datos no coinciden con lo que esperas" — un síntoma no-específico que invita a hipotetizar sobre código/RLS/cache/redes ANTES de comprobar lo más simple: ¿estoy mirando la URL que creo? Yo gasté ~40 min descartando hipótesis sobre Vercel, RLS, embeds, force-push del filter-repo, etc., antes de que PM revisara la URL real de su navegador. El coste fue alto: Gonzalo esperando, rate-limit posterior del Auth, dos lecciones que capturar.
+
+**How to apply:** próximo proyecto nuevo con Supabase Auth — primer paso ANTES de habilitar `signInWithOtp` o `signInWithOAuth`, ir a Supabase Dashboard → Authentication → URL Configuration y aplicar el wiring de regla 3. Y siempre antes de un debugging de "datos no coinciden": pedir al humano que confirme dominio real del browser. Coste: 5 segundos. Ahorra horas.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
