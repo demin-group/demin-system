@@ -23,6 +23,10 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=demin-replenish
 
+# SuccessExitStatus: exit 3 = WARNING legitimo (cola no llena pero sin material
+# disponible para procesar). systemd no debe marcarlo como failed.
+SuccessExitStatus=0 3
+
 # Tras fallo: no restart automatico (timer hace retry en 4h)
 Restart=no
 
