@@ -1,0 +1,33 @@
+[Unit]
+Description=DEMIN send_gmail — envia approved messages dentro de ventana 9-13/15-18 Madrid
+Documentation=https://github.com/demin-group/demin-system
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=demin
+Group=demin
+WorkingDirectory=/home/demin/demin-system/apps/workers
+Environment=ENV=prod
+Environment=PATH=/home/demin/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# --max-sends 5 por tick: 15min entre ticks * 4 ticks/h * 5 sends = 20/h max,
+# muy por encima del cap diario 20/dia de mailboxes.daily_cap (=20).
+# send_gmail valida cap rolling 24h internamente y respeta ventana 9-13/15-18.
+ExecStart=/home/demin/.local/bin/uv run python -m outreach.send_gmail --env prod --max-sends 5
+
+# send_gmail puede tardar hasta jitter 90-180s por send (5 sends ~ 15min worst case).
+TimeoutStartSec=1200
+Nice=10
+IOSchedulingClass=idle
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=demin-send
+
+# SuccessExitStatus=0 4 — exit 4 = fuera de ventana, no es fallo.
+SuccessExitStatus=0 4
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

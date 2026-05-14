@@ -1,0 +1,13 @@
+[Unit]
+Description=Timer: dispara demin-auto-pause cada hora
+Documentation=https://github.com/demin-group/demin-system
+
+[Timer]
+# Cada hora. Apendice A regla 6: nunca desactivar auto-pausa sin aprobacion humana.
+OnBootSec=10min
+OnUnitActiveSec=1h
+Persistent=true
+Unit=demin-auto-pause.service
+
+[Install]
+WantedBy=timers.target

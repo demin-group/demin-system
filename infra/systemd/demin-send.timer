@@ -1,0 +1,15 @@
+[Unit]
+Description=Timer: dispara demin-send cada 15min dentro de ventana 9-13/15-18 Madrid
+Documentation=https://github.com/demin-group/demin-system
+
+[Timer]
+# Ventana 1: 9:00-12:59 Madrid, cada 15 min (xx:00, xx:15, xx:30, xx:45)
+# Ventana 2: 15:00-17:59 Madrid, cada 15 min
+# send_gmail revalida ventana internamente — fuera dispara exit 4 (SuccessExitStatus).
+OnCalendar=Mon..Fri *-*-* 09..12:00/15:00 Europe/Madrid
+OnCalendar=Mon..Fri *-*-* 15..17:00/15:00 Europe/Madrid
+Persistent=false
+Unit=demin-send.service
+
+[Install]
+WantedBy=timers.target

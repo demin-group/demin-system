@@ -1,0 +1,14 @@
+[Unit]
+Description=Timer: dispara demin-replenish cada 4h
+Documentation=https://github.com/demin-group/demin-system
+
+[Timer]
+# Cada 4 horas desde boot/activacion (6 runs/dia)
+# Persistent=true asegura que si VPS estuvo offline, dispara una al volver.
+OnBootSec=2min
+OnUnitActiveSec=4h
+Persistent=true
+Unit=demin-replenish.service
+
+[Install]
+WantedBy=timers.target

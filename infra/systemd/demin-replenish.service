@@ -1,0 +1,30 @@
+[Unit]
+Description=DEMIN auto_replenish — mantiene cola HITL >=15 drafts en BD prod
+Documentation=https://github.com/demin-group/demin-system
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=demin
+Group=demin
+WorkingDirectory=/home/demin/demin-system/apps/workers
+Environment=ENV=prod
+Environment=PATH=/home/demin/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/home/demin/.local/bin/uv run python -m pipeline.auto_replenish --env prod --target 15 --batch-size 10 --max-cost-usd 0.50 --max-hunter-calls 10 --tier T3
+
+# Limites defensivos
+TimeoutStartSec=900
+Nice=10
+IOSchedulingClass=idle
+
+# Salida a journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=demin-replenish
+
+# Tras fallo: no restart automatico (timer hace retry en 4h)
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

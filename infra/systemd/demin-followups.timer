@@ -1,0 +1,14 @@
+[Unit]
+Description=Timer: dispara demin-followups cada hora
+Documentation=https://github.com/demin-group/demin-system
+
+[Timer]
+# Cada hora, en cualquier momento del dia.
+# follow_ups programa drafts D+4/D+10 cuando sent_at >= delta_days sin reply.
+OnBootSec=5min
+OnUnitActiveSec=1h
+Persistent=true
+Unit=demin-followups.service
+
+[Install]
+WantedBy=timers.target
