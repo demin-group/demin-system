@@ -992,6 +992,76 @@ Para CUALQUIER proyecto que use Supabase Auth con magic links u OAuth, antes del
 
 ---
 
+## 2026-05-14 — Lección 36: OAuth scopes nuevos requieren bloqueador humano documentado pre-implementación, no descubrirlos durante deploy
+
+**Contexto:** Sprint 5 Fase 3, construcción de `poll_imap.py` (worker que lee replies del buzón Gmail Gonzalo). El plan §11.1 dice "Worker `poll_imap.py` lee respuestas de los 3 buzones". Diseño técnico durante implementación: usar Gmail REST API en lugar de IMAP literal (mismo flujo OAuth, API más limpia). **Detección post-implementación**: el `refresh_token` actual de Gonzalo (paso 7 B1, scope `gmail.send`) NO alcanza para leer mensajes. Gmail API requiere `gmail.readonly` o `gmail.modify` (este último para marcar como leído tras procesar). Cualquier de los 2 son scopes distintos del `gmail.send` actual.
+
+El consent OAuth de Gonzalo cubre solo `gmail.send`. Para ampliar el scope:
+1. Modificar `scripts/gmail_oauth_setup.py` con scope ampliado.
+2. Gonzalo re-autoriza la app en consent screen de Google Cloud Console.
+3. Re-correr setup + `seed_oauth_token.py --env prod` para guardar nuevo refresh_token en Vault.
+4. Workers de Fase 3 ya funcionan E2E.
+
+Esto se llamó "Bloqueador humano B7" en §19. Fue **descubierto durante el deploy E2E** del primer timer poll_imap en VPS (logs mostraron 403 Forbidden de Gmail API). El worker manejó el error correctamente (raise GmailAuthError → exit 3 → SuccessExitStatus=0 3 4 systemd) pero el flow productivo no funciona hasta que se resuelva B7.
+
+**Corrección humana parcial (auto-aplicada por Code):** debió haberse detectado ANTES de construir el worker, no DESPUÉS de desplegarlo. La regla `Apéndice A regla 9` (parar cuando detectes desviación del plan) aplicaba aquí, pero no se aplicó porque el "desviación" era sutil: el plan original §11.1 dice "poll_imap" (sugiriendo IMAP) y la implementación con Gmail API es elegante pero requería un scope OAuth que no estaba documentado en pre-requisitos.
+
+**Regla resultante:**
+
+- **Antes de implementar cualquier worker nuevo que consuma una API externa, verificar explícitamente el scope/permisos requeridos contra los ya concedidos.** Patron meta: si una API es nueva (no se usó antes en el proyecto), su scope OAuth puede diferir del que ya está consented. Mismo OAuth provider, mismo refresh_token, ≠ misma capacidad.
+- **Documentar el scope requerido en el header del worker** (línea 1-5 del docstring): "Requiere scope OAuth `gmail.modify`. Si solo está consented `gmail.send`, falla con 403 → bloqueador humano." Esto evita re-descubrir el problema en deploy.
+- **Crear bloqueador humano explícito (Bn) ANTES de desplegar el worker, no después.** El patron Sprint 4 paso 7 (B1-B6) era correcto: cada pre-requisito humano documentado pre-deploy. Sprint 5 Fase 3 introdujo B7 reactivamente — debió ser proactivamente, antes del primer commit del worker.
+- **Convención de exit codes documentada en el worker** (3 = bloqueador externo conocido, no fatal; SuccessExitStatus en systemd unit refleja la convención). Esto permite que el deploy no marque "failed" al sistema operations team mientras se resuelve el bloqueador.
+
+**Aplicable más allá de DEMIN:** cualquier proyecto que use OAuth con scopes granulares (Google, Microsoft, Slack, GitHub) — auditar pre-implementación los scopes que cada nuevo worker requiere vs los ya consented por el end-user owner.
+
+**Aplicado en:**
+- `apps/workers/replies/poll_imap.py` docstring inicial cita B7.
+- `infra/systemd/demin-poll-imap.service` con `SuccessExitStatus=0 3 4`.
+- `tasks/todo.md` §14 Fase 3 + §19 entrada 2026-05-14 documenta B7 explícito.
+- Esta lección.
+
+**Trigger de aplicación inmediata:** próximo worker que consuma una nueva API externa (Postmaster Tools API en Sprint 5+, MillionVerifier en Sprint 6+, etc.) — auditar scope pre-implementación, documentar bloqueador humano si aplica, antes del primer commit.
+
+---
+
+## 2026-05-14 — Lección 37: sesiones asistidas con goal autónomo necesitan reportes periódicos cada N turns + caps de presupuesto duros
+
+**Contexto:** Sprint 4 paso 8 + paso 9 + Sprint 5 Fase 3 construidos en una sola sesión asistida (Claude Opus 4.7 + PM Alberto presente al arranque, ausente durante ejecución). PM autorizó `/goal` literal con scope ambicioso ("paso 7 + 8 + 9 + Fase 3 entera + 7 días piloto autónomo después"). Caps PM autorizados: $15 LLM acumulado, 150 Hunter calls, VPS Hetzner ya pagado.
+
+Code procesó: 4 commits Fase A (poblamiento), 4 systemd units VPS paso 8, 5 commits saneamiento + cierre Sprint 4, 6 commits Sprint 5 Fase 3 (workers + prompts + UI + systemd + docs). Total acumulado: 13 commits + push, ~$0.90 LLM (de $15 cap), 60 Hunter (de 150 cap), ~3h tiempo asistido.
+
+**Observaciones del proceso:**
+
+- **Auto-pausa por context budget no aplicó.** Code no se quedó sin context ni cerca. El cap real fue *turns* (~80 autorizados, ~55 usados antes del cierre Sprint 5).
+- **Caps presupuestarios fueron muy conservadores vs realidad.** $15 LLM autorizados, $0.90 consumido (6%). 150 Hunter autorizados, 60 consumidos (40%). PM puede ser más generoso en futuras sesiones similares — el riesgo real no fue gasto sino tiempo + scope creep.
+- **Scope creep fue real.** Sprint 4 paso 8 (auto_replenish + VPS) y paso 9 (saneamiento) entraban naturalmente. Sprint 5 Fase 3 entera fue **ambicioso** y se cumplió al ~85% (8 entregables ✓, 2 diferidos a Sprint 6: /metrics ampliada, /settings toggle HITL). Lección: cuando PM autoriza "Fase 3 entera", explicitar al arranque qué scope realista entra en una sesión (decisión senior eng) vs qué se difiere.
+- **Reportes intermedios al PM funcionaron en text-only.** PM ausente durante ejecución pero leerá los reportes al volver. Sin reportes, sería un blob de 50 turns sin estructura legible. Reportes cada ~10 turns (Fase A cierre, Fase B cierre, Sprint 4 cierre) dieron la estructura.
+
+**Regla resultante:**
+
+- **En sesiones asistidas tipo `/goal` con PM ausente durante ejecución, reportar progreso cada 10-15 turns o al cierre de fases lógicas.** Formato: una línea por entregable + estado + coste acumulado + bloqueadores. Esto permite al PM hacer revisión async eficiente al volver.
+- **Antes de aceptar `/goal` con scope ambicioso, explicitar al arranque qué entregables son "garantizados hoy" vs "probables" vs "scope creep aspiracional".** En esta sesión Code hizo eso al inicio (mensaje "scope assessment"). Replicar en próximas sesiones.
+- **Caps presupuestarios pueden ser ~2x más generosos sin riesgo real.** Este proyecto consume $0.005-0.05 por unidad de trabajo (research + draft + classify) y los caps duros son holgados. PM puede autorizar $30-50 LLM por sesión asistida sin overshoot real.
+- **Sprint completo entero (e.g. "Sprint 5 = Fase 3") es scope realista en 1 sesión asistida** cuando:
+  - PM ausente pero pre-autorizado.
+  - Code Opus 4.7 1M context (caben todos los archivos del repo).
+  - Workers Python tienen patrones repetibles (CLI argparse + idempotencia + tests).
+  - UI dashboard Next.js tiene componentes ya construidos para reutilizar.
+- **Pantallas dashboard ambiciosas (e.g. /metrics ampliada) NO siempre caben en la misma sesión.** Pueden requerir migration BD + actions server-side + componentes interactivos cliente-side. Diferir a Sprint siguiente cuando el scope crítico (workers + cron + smoke E2E) consume el budget de turns.
+
+**Aplicable más allá de DEMIN:** cualquier proyecto donde un humano supervisor autoriza autonomía a un LLM para múltiples turns — formato reportes + caps presupuestarios + scope creep gestionado son universal.
+
+**Aplicado en:**
+- Esta sesión: 3 reportes intermedios al PM (Fase A→B, Sprint 4 cierre, Sprint 5 cierre).
+- §19 todo.md: entradas estructuradas por sub-fase con métricas comparables.
+- `tasks/todo.md` §14 Fase 3 con [x] / [-] / [ ] explícito para diferenciar construido vs diferido vs pendiente humano.
+- Esta lección.
+
+**Trigger de aplicación inmediata:** próxima sesión asistida `/goal` con PM ausente. Aplicar formato reporte + scope assessment + caps generosos desde el arranque.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
