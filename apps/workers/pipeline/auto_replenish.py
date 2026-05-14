@@ -94,7 +94,8 @@ def count_research_pending(env: EnvName, tier: Tier) -> int:
 def count_contacts_without_draft(env: EnvName, tier: Tier) -> int:
     """Contacts is_primary del tier sin message asociado (huerfanos).
 
-    Estos pueden generar drafts directamente sin pasar por research/find_contacts.
+    Filtros alineados con `generate_draft.fetch_pending_contacts` para evitar
+    falsos positivos: solo cuentan contacts elegibles para entrar al pipeline.
     """
     engine = get_engine(env)
     with engine.connect() as conn:
@@ -104,8 +105,11 @@ def count_contacts_without_draft(env: EnvName, tier: Tier) -> int:
                 select count(*) from contacts c
                 join companies co on co.id = c.company_id
                 where c.is_primary = true
+                      and c.is_optout = false
                       and co.tier = :tier
                       and co.ia_fit = 'fit'
+                      and co.research_done_at is not null
+                      and not (co.research_data ? '_failed')
                       and not exists (
                         select 1 from messages m where m.contact_id = c.id
                       )
