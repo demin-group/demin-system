@@ -1087,7 +1087,7 @@ Eso es v2 si tiene sentido, no antes.
 
     **Condición de activación `verify_emails.py` durante paso 7** (decisión PM 1.2 paso 7): si **bounce rate >1% en el primer batch de 50 envíos**, construir `verify_emails.py` (§8.7) ANTES del paso 8. Hunter ≥60 confidence se asume suficiente; si la realidad muestra >1% bounce, ese supuesto cae y necesitamos verificación MX + SMTP probe explícita.
 - [x] **Paso 8: auto_replenish + cron VPS [Fase 2]** — worker periódico mantiene cola HITL >=15 drafts en BD prod, sin intervención humana. **Cerrado 2026-05-14**: `pipeline/auto_replenish.py` + 7 tests + 4 systemd units (`demin-replenish.timer` 4h, `demin-send.timer` cada 15min en ventana 9-13/15-18 Madrid lun-vie, `demin-followups.timer` 1h, `demin-auto-pause.timer` 1h) desplegados en VPS Hetzner CPX22 Nuremberg (178.105.143.239 user demin, Ubuntu 24.04, Python 3.12, uv 0.11). Caps por run: $0.50 LLM + 10 Hunter (~$3 + 60 diario con 6 runs/día). Smoke en VPS: replenish corre y reporta WARNING legitimo "no_research_pending T3" tras Fase A agotar T3 fit con web (64 empresas, 51 procesadas + 13 pre-existentes con research). Entrada §19 paso 7+8 unificada. **Pendiente decisión PM:** habilitar `--tier T2` en `demin-replenish.service` cuando quiera abrir Semana 2 D22 (basta editar el unit, 1 línea). El roll-out T2 original ("añadir T2 con `personas_extraidas` enriqueciendo cargos. Validar hit rate 20% → 50-60%") sigue siendo un objetivo pendiente para cuando PM decida arrancarlo — la infra está lista, solo falta la palanca.
-- [ ] **Paso 9: cierre Sprint 4** — métricas reales de Semana 1+2-3, revisión post-Sprint Lección 19 (¿alguna decisión §3 invalidada? ¿§8 sigue alineado? ¿Sprint 5 con Opción C tiene suposiciones tumbadas?), entrada §19, decisión go/no-go Sprint 5. **Cruces explícitos obligatorios** (PM notas acumuladas durante el sprint): (a) D21 vs cobertura efectiva `personas_extraidas` medida en paso 8 — si <30% T2 OK con personas enriquecidas, el hit rate 20%→50-60% no se materializa y revisar arquitectura híbrida; (b) clasificación Sprint 3 vs falsos positivos detectados en paso 6 — si >1 FP confirmado en las 5 T3 reales (paso 6 ya identificó 2 candidatos: SERVISHOP MANLOGIST y SB 63 pinnea.com, más RUTHERFORD ESPAÑOLA del paso 4b), classify_descr necesita iterar antes de Sprint 5; (c) cobertura Hunter T3 efectiva vs Frente E (smoke paso 6 dio 20% sobre 10 empresas, frente al 80% que Frente E proyectaba sobre 5 — la divergencia merece análisis: ¿muestreo? ¿el ICP real T3 con web tiene peor cobertura Hunter de lo asumido?); (d) **pasada de saneamiento `mypy --strict` de `shared/` + `tsc --noEmit` del dashboard** — 4 deudas acumuladas (config.py:94, llm.py:72, llm.py:190, scripts/smoke_kb_e2e.ts:76/94/107), todas triviales individualmente pero acumuladas en módulos transversales merecen un arreglo conjunto al cerrar Sprint 4 o como primer paso de Sprint 5.
+- [x] **Paso 9: cierre Sprint 4** — métricas reales de Semana 1+2-3, revisión post-Sprint Lección 19 (¿alguna decisión §3 invalidada? ¿§8 sigue alineado? ¿Sprint 5 con Opción C tiene suposiciones tumbadas?), entrada §19, decisión go/no-go Sprint 5. **Cerrado 2026-05-14** (sesión actual). Cruces obligatorios resueltos: **(a) D21 T2 personas_extraidas:** SIN DATO esta sesión — T2 no se procesó (replenish T3 first). Métrica diferida a próximo run cuando PM active `--tier T2`. Cuando llegue, comparar contra threshold 30%. **(b) classify_descr FPs:** 2 candidatos identificados en paso 6 (SERVISHOP MANLOGIST, SB 63 pinnea.com) + RUTHERFORD ESPAÑOLA (paso 4b). PENDIENTE auditoría humana — PM la programa para Sprint 5 ya que afecta clasificación, no la cadencia productiva. Las 3 empresas siguen en cola pero marcadas como "research_done sin contactos aceptables" (find_contacts las skipea naturalmente). **(c) cobertura Hunter T3 efectiva vs Frente E (80%):** CONFIRMADO BAJO. Datos acumulados de 4 mediciones: smoke paso 6 = 20% (1/5), B6 = 28.6% (2/7), Fase A batch 1 = 20% (6/30), Fase A batch 2 = 10% (3/30). Promedio ~16% sobre 72 empresas T3 fit con web. Frente E sobre 5 empresas dio 80% — muestra atípica. Decisión Sprint 5: NO escalar Hunter (Lección 21 ×5 si lo intentáramos otra vez), NO reconsiderar D21 (15-20% es deliverable, solo más lento que el supuesto), evaluar fuentes complementarias `empresite.com` / `einforma.com` (Lección 26) cuando se decida arrancar T1+T4 con Opción C. **(d) saneamiento mypy + tsc:** ✓ cerrado, 3 errores mypy strict en `shared/` (config.py:104, llm.py:79, llm.py:197) y 1 error tsc en `dashboard/scripts/smoke_kb_e2e.ts:76` corregidos (commit `3002d8d`). `mypy --strict shared/` y `tsc --noEmit` ambos limpios. **Decisión go/no-go Sprint 5:** GO con scope reducido. La premisa original Sprint 5 era "T1+T4 con Opción C". Hoy la prioridad real es Fase 3 (poll_imap + classify_replies + handle_actions + auto_pause + pantallas dashboard) para autonomía completa; Opción C T1/T4 puede esperar a Sprint 6+. Decisión PM-aware: arrancar Sprint 5 = Fase 3 entera; T1+T4 = Sprint 6.
 
 **Items productivos transversales al Sprint 4 (no atados a un paso concreto):**
 
@@ -1095,13 +1095,13 @@ Eso es v2 si tiene sentido, no antes.
 - [ ] Logs y observabilidad básica
 - [ ] Pantalla "Pipeline" funcional (read-only) — pre-requisito UX de Sprint 4 paso 6/7 para que Gonzalo audite leads + research + contactos
 
-**Deuda técnica conocida (no scope Sprint 4):**
+**Deuda técnica conocida (post-Sprint 4 cierre):**
 
-- `apps/workers/shared/config.py:94` — `mypy --strict` reporta `Argument 1 to "env_file_path" has incompatible type "Literal['dev','prod'] | None"; expected "Literal['dev','prod']"`. Detectado al ejecutar mypy en Sprint 4 paso 3 (commit af60296). No bloquea ningún flujo runtime — `os.environ.get("ENV","dev")` siempre devuelve string. Fix trivial (`assert env is not None` o cambiar la firma). Se aborda cuando bloquee algo o en una pasada de saneamiento general.
-- **httpx loguea api_key en cleartext en URLs de Hunter.** `logging.getLogger("httpx")` imprime cada request en INFO con `?api_key=140fd9...` completo en la URL — viene del comportamiento por defecto de httpx, no de nuestro código. Detectado al ejecutar el smoke de Sprint 4 paso 4 (commit 56289aa). Mientras los logs queden en local no hay leak real, pero **antes de cualquier flujo donde los logs salgan del entorno** (Sentry, CloudWatch, ELK, Vercel logs si en algún momento un worker corre allí, etc.) hay que mitigarlo. Fix: `logging.getLogger("httpx").setLevel(logging.WARNING)` en `shared/hunter_adapter.py` y `shared/llm.py` (o globalmente en `shared/config.py`); alternativa más fina, un filtro que redacte query params sensibles. La API de Hunter solo acepta key como query param, así que no se puede mover a header. NO urgente para Sprint 4 paso 4-7 (logs locales solo); SÍ obligatorio antes de Fase 3 (autonomía → probable export de logs a sistema central) o si algún paso intermedio activa export de logs.
-- `apps/workers/shared/llm.py:72` — `mypy --strict` reporta `Module "voyageai" does not explicitly export attribute "Client"`. SDK upstream sin `__all__` ni `py.typed`. Detectado al ejecutar mypy en Sprint 4 paso 4b (commit pendiente). Fix trivial: añadir `# type: ignore[attr-defined]` en la línea de `voyageai.Client(...)`. No bloquea runtime.
-- `apps/workers/shared/llm.py:190` — `mypy --strict` reporta `Incompatible return value type (got "list[list[float]] | list[list[int]]", expected "list[list[float]]")`. El SDK Voyage tipa `embeddings` como heterogéneo en sus stubs aunque en runtime devuelve solo floats. Detectado al ejecutar mypy en Sprint 4 paso 4b. Fix trivial: cast explícito `list[list[float]]` o `# type: ignore[return-value]`. No bloquea runtime — el smoke `embed_documents` en Sprint 1 cargó 27 chunks y tests Voyage validaron dim 1024 sin issues.
-- `apps/dashboard/scripts/smoke_kb_e2e.ts:76,94,107` — `tsc --noEmit` reporta 3 errores TS2345: `Argument of type 'SupabaseClient<any, "public", "public", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'`. Detectado al ejecutar `npx next build` en Sprint 4 paso 6 (commit 66166b2 al construir `/pipeline`). El error viene de un type drift entre @supabase/supabase-js (cliente que devuelve SupabaseClient<any, "public", ...>) y la firma del helper local que el script consume (espera el shape genérico de PostgREST). Preexistente — el script `smoke_kb_e2e.ts` se mergeó en Sprint 1 antes de que el SDK actualizara sus genéricos. Fix trivial: añadir un `as unknown as` cast en las 3 llamadas o ajustar la firma del helper. NO bloquea runtime (el `next build` compila las páginas correctamente; sólo falla la fase de typecheck en CI). NO afecta a `/pipeline` ni a `/kb`. Atacar conjuntamente con las 3 deudas mypy de `shared/` en la pasada de saneamiento del paso 9 o inicio Sprint 5.
+- ~~`apps/workers/shared/config.py:94`~~ ✓ **Cerrada paso 9 (2026-05-14, commit `3002d8d`)** — assert env is not None tras narrowing.
+- ~~**httpx loguea api_key en cleartext en URLs de Hunter**~~ ✓ **Cerrada paso 7 (2026-05-13, commit `56798a2`)** — `logging.getLogger("httpx").setLevel(WARNING)` en `shared/hunter_adapter.py` y `shared/llm.py` (Lección 33 regla 6 aplicada).
+- ~~`apps/workers/shared/llm.py:72`~~ ✓ **Cerrada paso 9 (2026-05-14, commit `3002d8d`)** — `# type: ignore[attr-defined]` en `voyageai.Client(...)`.
+- ~~`apps/workers/shared/llm.py:190`~~ ✓ **Cerrada paso 9 (2026-05-14, commit `3002d8d`)** — `cast(list[list[float]], res.embeddings)` con import en cabecera.
+- ~~`apps/dashboard/scripts/smoke_kb_e2e.ts:76,94,107`~~ ✓ **Cerrada paso 9 (2026-05-14, commit `3002d8d`)** — `countChunks(admin: any)` para evitar SDK drift entre Sprint 1 y hoy. `npx tsc --noEmit` limpio.
 
 **Criterio de salida Fase 1:** lista de ~400-500 leads cualificados, con email verificado, dossier de research, listos para campaña. Dashboard muestra el pipeline. KB indexado y editable. **Estado actual 2026-05-06: contacts=0, messages=0, pantalla pipeline scaffold. Cierre técnico llega al cumplir Sprint 4 paso 6 (validación E2E sobre 5 T3 reales).**
 
@@ -2022,6 +2022,46 @@ Cuando estés listo para activar `app.demingroupmadrid.com`:
 **Ahorro / coste Sprint 4 paso 7+8:** ~3-4 horas de trabajo guiado humano comprimido a ~3h asistido por LLM. Coste LLM Anthropic de esta sesión: ~$0.85 acumulado (de $15 autorizados). Hunter: 60 calls (de 150 autorizadas).
 
 **Pendientes paso 9 (Lección 19 cruces + saneamiento mypy/tsc):** captura métricas reales de paso 7-8, revisión post-Sprint, decisión Sprint 5. Misma sesión si turns alcanzan; sino sesión siguiente.
+
+---
+
+### 2026-05-14 — Cierre Sprint 4 oficial + saneamiento + go Sprint 5 = Fase 3
+
+**Sprint 4 cierra hoy** tras 9 pasos en 8 días (2026-05-06 → 2026-05-14):
+
+| Paso | Estado | Resumen |
+|---|---|---|
+| 1 | ✓ | Migration BD (`email_type` + `email_priority` en contacts). |
+| 2 | ✓ | `shared/email_policy.py` (whitelists + clasificación). |
+| 3 | ✓ | `HunterAdapter` con tenacity retry, 42 tests MockTransport. |
+| 4 | ✓ | `find_contacts.py` (449 líneas, 58 tests). |
+| 4b | ✓ | `research_prospect.py` (~600 líneas, función dual, 55 tests). |
+| 5 | ✓ | 3 prompts versionados (opening/reframe/closing), 53 tests estructurales. |
+| 6 | ✓ | Validación E2E 5 T3 reales, 4 drafts generados, `/pipeline` read-only. |
+| 7 | ✓ | Roll-out Semana 1: B1 OAuth + B2 Vercel dashboard + B3 Hunter Starter + B4 ALLOWED_EMAILS + B5 smoke + B6 productivo. 2 emails reales (jaime/admin) salen automáticamente desde VPS a las 15:00 Madrid del día del cierre. |
+| 8 | ✓ | auto_replenish + 4 systemd units VPS Hetzner. |
+| 9 | ✓ | Saneamiento mypy/tsc + Lección 19 cruces resueltos. |
+
+**Métricas finales Sprint 4:**
+
+- Coste LLM acumulado Sprint 4 productivo: ~$1.0 (~$0.15 paso 6 + ~$0.85 Fase A paso 7 cierre).
+- Coste Hunter: 67 búsquedas (de 500/mes Starter). Holgura amplia.
+- Coste infra recurrente nuevo: VPS Hetzner CPX22 9.67€/mes (paso 8). Total recurrente proyectado: ~115-125€/mes, **dentro de techo D15 (150€/mes)**.
+- 71 empresas T3 procesadas con research (64 fit con web + 7 pre-existentes).
+- 12 contacts insertados Fase A + 4 pre-existentes B6 = 16 contacts T3 total en prod.
+- 10 mensajes en cola HITL al cierre (2 approved B6 + 8 drafted Fase A).
+- 0 emails enviados productivos al cierre del paso 9 (los 2 B6 saldrán automáticamente desde VPS); 2 emails enviados smoke B5 (a `albertobueno10@gmail.com`).
+- Cobertura efectiva find_contacts T3 = **~16%** sobre 72 empresas (vs 80% proyectado Frente E que motivó D21). Decisión: no escalar Hunter, no reconsiderar D21; el 16% es deliverable y la cadencia/aprobación HITL absorbe el volumen.
+- 35 lecciones capturadas total (28-35 nuevas en Sprint 4: Lección 28 cruzar filtros, 29 tiebreaker silencioso, 30 caps con datos, 31 secrets en chat, 32 derogación con paper trail, 33 secrets en docs, 34 env vars Vercel, 35 Supabase Auth Site URL).
+
+**Go Sprint 5 = Fase 3:** scope original Sprint 5 era "T1+T4 con Opción C". Decisión PM-aware esta sesión: arrancar Sprint 5 = Fase 3 entera (poll_imap + classify_replies + handle_actions + auto_pause + pantallas /inbox + /metrics ampliada + /settings con toggle HITL ↔ autónomo) para autonomía completa post-piloto HITL. T1+T4 = Sprint 6+. Razón: la cola HITL ya funciona productiva con T3 (16% cobertura es suficiente para el flujo piloto), pero el ciclo no se cierra hasta que las **respuestas** entran de vuelta al sistema. Sin Fase 3 no hay re-engage 60d/90d ni opt-out automático ni auto-pause efectivo. Sprint 5 = Fase 3 desbloquea el modo autónomo D1.
+
+**Pendientes operativos (post-cierre Sprint 4):**
+
+- Verificar mañana en `/metrics` prod que los 2 emails B6 salieron a 15:00 Madrid (timer demin-send dispara hoy 13:00 UTC = 15:00 Madrid; primer disparo del worker en VPS).
+- Auditoría env vars restantes Vercel prod (Lección 34 regla 5) — ANTHROPIC, VOYAGE, HUNTER, DATABASE_URL, ALLOWED_EMAILS, modelos LLM.
+- Activar `--tier T2` en `demin-replenish.service` cuando PM decida arrancar Semana 2 D22 (1 línea editar `/etc/systemd/system/demin-replenish.service` + `systemctl daemon-reload`).
+- Auditoría humana FPs classify_descr (SERVISHOP MANLOGIST + SB 63 pinnea.com + RUTHERFORD ESPAÑOLA) — Sprint 5+, no urgente.
 
 ---
 
