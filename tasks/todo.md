@@ -2122,6 +2122,45 @@ PM puede terminar su sesión. Gonzalo aprueba drafts daily desde `/approval-queu
 
 ---
 
+### 2026-05-14 — Sprint 6 construido en continuación de la misma sesión (auditoria + /metrics ampliada + /settings completa + audit FPs + /inbox UX)
+
+PM autorizó continuar autonomo tras cierre Sprint 5. Sprint 6 entero construido en ~25 turns adicionales con cap presupuesto $5 LLM + 30 Hunter (no consumido — solo SQL + UI sin LLM nuevo).
+
+**Entregables Sprint 6 (commits `d037e0e` → `f555c9d`):**
+
+| Tarea | Estado | Resumen |
+|---|---|---|
+| Auditoría env vars Vercel (Lección 34 regla 5) | ✓ | Script `scripts/audit_vercel_env_checklist.py` genera checklist prefix+length para PM cross-reference manual (sin Vercel CLI token desde sesión asistida). 7 vars dashboard: NEXT_PUBLIC_SUPABASE_URL, ANON_KEY (sb_publishable_), SERVICE_ROLE_KEY (sb_secret_), ALLOWED_EMAILS, VOYAGE_API_KEY, VOYAGE_MODEL, NEXT_PUBLIC_APP_URL. PM verifica en Vercel manualmente. |
+| /metrics ampliada | ✓ | Embudo top + messages funnel + rates 7d + reply rate por ángulo + conversion tier + deliverability por buzón + coste mes desglosado (LLM real + Hunter estimado + Voyage + Hetzner + Vercel). 6 cards. |
+| Migration 12 + auto_approve.py + /settings toggle HITL | ✓ | `mailboxes.hitl_mode boolean default true` aplicada en BD dev+prod. Worker `outreach/auto_approve.py` aprueba drafts cuando `hitl_mode=false` (paper trail `events.draft_auto_approved`). systemd `demin-auto-approve.timer` (15min, exit limpio si todos hitl_mode=true). UI `/settings` con toggle per-mailbox + doble confirm + paper trail `events.mode_changed`. **DEFAULT seguro: HITL=true. Sprint 6 deja infra construida pero NO activa**. PM decide tras 7d piloto. |
+| Auditoría FPs classify_descr | ✓ | 3 candidatos (SERVISHOP MANLOGIST, SB 63, RUTHERFORD ESPAÑOLA) **NO son FPs**. Sus descripciones SABI confirman ICP. La señal `no_contactos_encontrados` que motivó la sospecha es marca de Hunter coverage baja (~16% Lección 19 cruce c), NO clasificación errónea. **Decisión: no ajustar prompt classify_descr.md**. Sprint 4 cruce (b) cerrado limpio. |
+| /inbox UX | ✓ | Filtros por categoría (chips con count) via URL search param `?cat=` + paginación 25/page via `?page=`. |
+
+**Coste Sprint 6:** $0 LLM (todo SQL + UI, sin llamadas LLM nuevas). 0 Hunter. ~25 turns sesión.
+
+**Estado final del sistema (cierre Sprint 6):**
+
+- **VPS Hetzner**: 8 timers activos (replenish, send, followups, auto-pause, poll_imap, classify_replies, handle_actions, auto_approve). 7 ejecutan productivos; auto_approve es no-op mientras hitl_mode=true (esperando decisión PM).
+- **Dashboard Vercel**: `/approval-queue` (HITL operativo), `/inbox` (filtros + paginación), `/metrics` (8 cards completos), `/settings` (pausa emergencia + toggle HITL), `/pipeline` (lectura), `/kb` (CRUD).
+- **BD prod**: 10 mensajes en cola (2 approved + 8 drafted). 4 contacts T3 + 12 nuevos = 16 contacts T3. 5578 companies. migration 12 aplicada.
+- **Bloqueadores residuales**: B7 (scope OAuth gmail.modify) requiere coordinación humana — no resoluble desde sesión asistida. Activar T2 — decisión PM diferida.
+
+**Métricas globales sesión completa (Fase A → Sprint 6):**
+
+- Turns gastados: ~80 (de 80 cap). 
+- LLM acumulado: ~$0.90 USD (de $15 + $5 = $20 cap autorizados).
+- Hunter calls: 60 (de 150 + 30 = 180 autorizados).
+- Commits: 25 pushes a main.
+- Workers nuevos: 4 (auto_replenish, poll_imap, classify_replies, handle_actions, auto_approve = 5 realmente).
+- systemd units: 8 (replenish, send, followups, auto-pause, poll-imap, classify-replies, handle-actions, auto-approve).
+- UI pages mejoradas/nuevas: 3 (/inbox MVP + filtros, /metrics ampliada, /settings toggle).
+- Migrations BD: 1 (migration 12).
+- Lecciones capturadas: 2 nuevas (36 + 37 = total 37).
+
+**Sprint 6 = ÚLTIMO entregable de la sesión.** PM termina aquí. Sistema corre autónomo en VPS desde ahora. PM revisa diariamente `/metrics` durante semana piloto.
+
+---
+
 ## Apéndice A — Reglas no negociables (resumen para Claude Code)
 
 1. **Nunca** envíes un correo sin pasar por la cola de aprobación (en HITL). En autónomo, nunca sin pasar las validaciones de §10.3.
