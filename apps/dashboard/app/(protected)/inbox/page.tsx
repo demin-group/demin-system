@@ -1,9 +1,13 @@
+import Link from "next/link";
+
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 
 export const metadata = { title: "Inbox — DEMIN" };
 export const dynamic = "force-dynamic";
+
+const PAGE_SIZE = 25;
 
 type ReplyRow = {
   id: string;
@@ -26,9 +30,12 @@ type ReplyRow = {
   } | null;
 };
 
-async function loadReplies(): Promise<ReplyRow[]> {
+async function loadReplies(
+  catFilter: string | null,
+  page: number,
+): Promise<ReplyRow[]> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  let q = admin
     .from("replies")
     .select(
       `
@@ -43,8 +50,13 @@ async function loadReplies(): Promise<ReplyRow[]> {
         )
       `,
     )
-    .order("received_at", { ascending: false })
-    .limit(100);
+    .order("received_at", { ascending: false });
+  if (catFilter && catFilter !== "all") {
+    q = q.eq("category", catFilter);
+  }
+  const from = page * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+  const { data, error } = await q.range(from, to);
 
   if (error) {
     throw new Error(`load replies fallo: ${error.message}`);
@@ -117,24 +129,86 @@ function humanActionBadge(act: string): string {
   return "bg-muted text-muted-foreground";
 }
 
-export default async function InboxPage() {
-  const replies = await loadReplies();
+async function loadCategoryCounts(): Promise<Record<string, number>> {
+  const admin = createAdminClient();
+  const cats = [
+    "interesado",
+    "pide_info",
+    "no_ahora",
+    "no_interesado",
+    "rebote",
+    "fuera_oficina",
+    "desconocido",
+  ];
+  const counts: Record<string, number> = { all: 0 };
+  const total = await admin
+    .from("replies")
+    .select("id", { count: "exact", head: true });
+  counts.all = total.count ?? 0;
+  for (const c of cats) {
+    const r = await admin
+      .from("replies")
+      .select("id", { count: "exact", head: true })
+      .eq("category", c);
+    counts[c] = r.count ?? 0;
+  }
+  return counts;
+}
+
+export default async function InboxPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ cat?: string; page?: string }>;
+}) {
+  const sp = await searchParams;
+  const catFilter = sp.cat ?? "all";
+  const page = Math.max(0, parseInt(sp.page ?? "0", 10) || 0);
+  const [replies, catCounts] = await Promise.all([
+    loadReplies(catFilter === "all" ? null : catFilter, page),
+    loadCategoryCounts(),
+  ]);
 
   // Agrupar por estado pendiente vs auto-handled.
   const pendientes = replies.filter((r) => r.human_action === "pendiente");
   const handled = replies.filter((r) => r.human_action !== "pendiente");
+
+  const filterLinks = [
+    { key: "all", label: "Todas" },
+    { key: "interesado", label: "Interesado" },
+    { key: "pide_info", label: "Pide info" },
+    { key: "no_ahora", label: "No ahora" },
+    { key: "no_interesado", label: "No interesado" },
+    { key: "rebote", label: "Rebote" },
+    { key: "fuera_oficina", label: "Fuera oficina" },
+    { key: "desconocido", label: "Desconocido" },
+  ];
 
   return (
     <div className="space-y-6">
       <div className="space-y-1">
         <h1 className="text-3xl font-semibold tracking-tight">Inbox</h1>
         <p className="text-sm text-muted-foreground">
-          Respuestas recibidas. {pendientes.length} pendientes de atención humana
+          Respuestas recibidas. {pendientes.length} pendientes en esta página
           (interesado / pide_info / desconocido escalados). {handled.length}{" "}
-          auto-procesadas por handle_actions (no_ahora → re-engage 60d;
-          no_interesado → re-engage 90d; rebote → email invalidado;
-          fuera_oficina → reschedule +7d; opt-out → cancel future + is_optout=true).
+          auto-procesadas. Pagina {page + 1} ({PAGE_SIZE} por pagina).
         </p>
+      </div>
+
+      {/* Filtros por categoria con counts */}
+      <div className="flex flex-wrap gap-2">
+        {filterLinks.map((f) => {
+          const active = catFilter === f.key;
+          const count = catCounts[f.key] ?? 0;
+          return (
+            <Link
+              key={f.key}
+              href={f.key === "all" ? "/inbox" : `/inbox?cat=${f.key}`}
+              className={`rounded-md border px-3 py-1 text-xs ${active ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            >
+              {f.label} <span className="ml-1 opacity-70">({count})</span>
+            </Link>
+          );
+        })}
       </div>
 
       <Card>
@@ -188,6 +262,31 @@ export default async function InboxPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Paginacion */}
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <div>
+          Pagina {page + 1} · {replies.length} resultados.
+        </div>
+        <div className="flex gap-2">
+          {page > 0 && (
+            <Link
+              href={`/inbox?${catFilter !== "all" ? `cat=${catFilter}&` : ""}page=${page - 1}`}
+              className="rounded-md border px-3 py-1 hover:bg-muted"
+            >
+              ← Anterior
+            </Link>
+          )}
+          {replies.length === PAGE_SIZE && (
+            <Link
+              href={`/inbox?${catFilter !== "all" ? `cat=${catFilter}&` : ""}page=${page + 1}`}
+              className="rounded-md border px-3 py-1 hover:bg-muted"
+            >
+              Siguiente →
+            </Link>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
