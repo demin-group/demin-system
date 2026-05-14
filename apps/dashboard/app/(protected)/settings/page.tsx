@@ -12,7 +12,7 @@ async function loadMailboxes(): Promise<MailboxRow[]> {
   const { data, error } = await admin
     .from("mailboxes")
     .select(
-      "id, email, display_name, daily_cap, current_day_sent, warmup_status, status, pause_reason",
+      "id, email, display_name, daily_cap, current_day_sent, warmup_status, status, pause_reason, hitl_mode",
     )
     .order("email", { ascending: true });
   if (error) {

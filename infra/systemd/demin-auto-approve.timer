@@ -1,0 +1,14 @@
+[Unit]
+Description=Timer: dispara demin-auto-approve cada 15min (Sprint 6 Fase 3)
+Documentation=https://github.com/demin-group/demin-system
+
+[Timer]
+# Cada 15 minutos. Si hitl_mode=true (default), exit limpio sin tocar nada.
+# Si hitl_mode=false en alguna mailbox, aprueba drafts pendientes.
+OnBootSec=20min
+OnUnitActiveSec=15min
+Persistent=true
+Unit=demin-auto-approve.service
+
+[Install]
+WantedBy=timers.target
