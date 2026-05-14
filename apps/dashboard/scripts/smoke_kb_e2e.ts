@@ -27,8 +27,13 @@ loadEnv({ path: resolve(__dirname, "..", ".env.local") });
 
 import { reembedDocument } from "../lib/kb/reembed";
 
+// SupabaseClient generic drifted entre @supabase/supabase-js versiones (Sprint 1
+// vs hoy). Acepto cualquier shape via `any` aqui — el smoke E2E solo lo usa
+// para SELECT con count head sobre tablas conocidas; sin type-safety perdida
+// operativa para un script de prueba.
+// deno-lint-ignore no-explicit-any
 async function countChunks(
-  admin: ReturnType<typeof createClient>,
+  admin: any,  // eslint-disable-line @typescript-eslint/no-explicit-any
   docId: string,
 ): Promise<number> {
   const r = await admin

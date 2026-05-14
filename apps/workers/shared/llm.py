@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import anthropic
 import voyageai
@@ -76,7 +76,7 @@ _anthropic_client = anthropic.Anthropic(
 # voyageai 0.3.x no expone `timeout` ni en Client(...) ni en .embed(...).
 # El SDK aplica un default interno (~120s). Si fuera necesario afinarlo,
 # habría que parchear la sesión httpx subyacente o cambiar de SDK.
-_voyage_client = voyageai.Client(api_key=settings.VOYAGE_API_KEY)
+_voyage_client = voyageai.Client(api_key=settings.VOYAGE_API_KEY)  # type: ignore[attr-defined]
 
 # ─── errores que se reintentan ──────────────────────────────────────────────
 _ANTHROPIC_RETRYABLE: tuple[type[BaseException], ...] = (
@@ -194,7 +194,9 @@ def _voyage_embed_call(texts: list[str], input_type: str) -> list[list[float]]:
         model=settings.VOYAGE_MODEL,
         input_type=input_type,
     )
-    return res.embeddings
+    # Voyage stubs tipan embeddings como list[list[float]] | list[list[int]],
+    # pero en runtime con voyage-multilingual-2 devuelve siempre floats.
+    return cast(list[list[float]], res.embeddings)
 
 
 def embed(

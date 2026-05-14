@@ -101,6 +101,7 @@ def load_settings(env: EnvName | None = None) -> Settings:
             )
         env = candidate  # type: ignore[assignment]
 
+    assert env is not None  # narrowing para mypy; rama 'is None' setea env arriba
     path = env_file_path(env)
     if not path.exists():
         raise FileNotFoundError(
