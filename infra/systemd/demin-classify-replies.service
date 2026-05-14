@@ -1,0 +1,27 @@
+[Unit]
+Description=DEMIN classify_replies -- clasifica replies en 6 categorias + opt-out (Fase 3)
+Documentation=https://github.com/demin-group/demin-system
+After=network-online.target demin-poll-imap.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=demin
+Group=demin
+WorkingDirectory=/home/demin/demin-system/apps/workers
+Environment=ENV=prod
+Environment=PATH=/home/demin/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/home/demin/.local/bin/uv run python -m replies.classify_replies --env prod --max-cost-usd 0.50
+
+TimeoutStartSec=600
+Nice=10
+IOSchedulingClass=idle
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=demin-classify-replies
+
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

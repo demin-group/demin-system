@@ -1,0 +1,30 @@
+[Unit]
+Description=DEMIN poll_imap -- lee replies del buzon Gmail Gonzalo (Fase 3)
+Documentation=https://github.com/demin-group/demin-system
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=demin
+Group=demin
+WorkingDirectory=/home/demin/demin-system/apps/workers
+Environment=ENV=prod
+Environment=PATH=/home/demin/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/home/demin/.local/bin/uv run python -m replies.poll_imap --env prod --max-results 50
+
+# Exit 3 = scope OAuth insuficiente (B7), no es fatal hasta que se resuelva.
+SuccessExitStatus=0 3 4
+
+TimeoutStartSec=300
+Nice=10
+IOSchedulingClass=idle
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=demin-poll-imap
+
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Timer: dispara demin-classify-replies cada 10min (Fase 3)
+Documentation=https://github.com/demin-group/demin-system
+
+[Timer]
+# Cada 10 minutos. Tras poll_imap inserto en replies, classify_replies procesa.
+OnBootSec=12min
+OnUnitActiveSec=10min
+Persistent=true
+Unit=demin-classify-replies.service
+
+[Install]
+WantedBy=timers.target

@@ -60,6 +60,9 @@ if not logger.handlers:
 _GMAIL_TIMEOUT_S = 30.0
 _OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
 _GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+_GMAIL_LIST_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
+_GMAIL_GET_URL_TEMPLATE = "https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_id}"
+_GMAIL_MODIFY_URL_TEMPLATE = "https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_id}/modify"
 _ACCESS_TOKEN_SAFETY_SECS = 60
 """Refresh el access_token cuando le queden <60s para evitar carrera."""
 
@@ -341,6 +344,161 @@ class GmailAdapter:
 
         return r.status_code, body, elapsed
 
+    # --- Read API (Fase 3) -------------------------------------------------
+    # Requiere scope https://www.googleapis.com/auth/gmail.modify (lectura +
+    # modificar labels). Si el refresh_token actual solo tiene gmail.send,
+    # 401/403. Bloqueador humano B7: Gonzalo re-autoriza con scope ampliado.
+
+    @retry(
+        retry=retry_if_exception_type((
+            httpx.TimeoutException,
+            httpx.ConnectError,
+            _GmailTransientError,
+        )),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=4),
+        reraise=True,
+    )
+    def list_unread_message_ids(
+        self,
+        *,
+        query: str = "is:unread newer_than:30d",
+        max_results: int = 50,
+    ) -> list[str]:
+        """Lista IDs de mensajes Gmail no leidos que matchean `query`.
+
+        Default: unread del ultimo mes. `max_results` <= 500 (limite Gmail).
+        """
+        access_token = self._get_access_function_safe()
+        headers = {"Authorization": f"Bearer {access_token}"}
+        params: dict[str, Any] = {"q": query, "maxResults": max_results}
+        started = time.monotonic()
+        r = self._client.get(_GMAIL_LIST_URL, headers=headers, params=params)
+        elapsed = int((time.monotonic() - started) * 1000)
+
+        if r.status_code == 401:
+            self._access_token = None
+            self._access_token_expiry = None
+            raise GmailAuthError(
+                "401 list_messages -- scope OAuth insuficiente (necesita "
+                "gmail.readonly o gmail.modify). Bloqueador humano B7."
+            )
+        if r.status_code == 403:
+            raise GmailAuthError(
+                "403 list_messages -- scope OAuth insuficiente. Bloqueador B7."
+            )
+        if r.status_code == 429:
+            raise _GmailTransientError("429 rate limit list_messages")
+        if 500 <= r.status_code < 600:
+            raise _GmailTransientError(f"{r.status_code} list_messages")
+        if r.status_code != 200:
+            raise GmailError(f"list_messages status {r.status_code}: {r.text[:200]}")
+
+        body = r.json()
+        msgs = body.get("messages", [])
+        ids = [m["id"] for m in msgs if "id" in m]
+        logger.info(
+            "gmail_list ok from=%s q=%r n=%d elapsed_ms=%d",
+            self._from_email, query, len(ids), elapsed,
+        )
+        return ids
+
+    @retry(
+        retry=retry_if_exception_type((
+            httpx.TimeoutException,
+            httpx.ConnectError,
+            _GmailTransientError,
+        )),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=4),
+        reraise=True,
+    )
+    def get_message_with_headers(self, msg_id: str) -> dict[str, Any]:
+        """Devuelve un dict con threadId, headers (dict por nombre lowercase),
+        plain_body (texto, decodificado), html_body (si existe), labelIds,
+        internalDate (datetime UTC).
+
+        Usa format=full para obtener payload completo.
+        """
+        access_token = self._get_access_function_safe()
+        headers = {"Authorization": f"Bearer {access_token}"}
+        params: dict[str, Any] = {"format": "full"}
+        url = _GMAIL_GET_URL_TEMPLATE.format(msg_id=msg_id)
+        started = time.monotonic()
+        r = self._client.get(url, headers=headers, params=params)
+        elapsed = int((time.monotonic() - started) * 1000)
+
+        if r.status_code == 401:
+            self._access_token = None
+            self._access_token_expiry = None
+            raise GmailAuthError(
+                "401 get_message -- scope OAuth insuficiente. Bloqueador B7."
+            )
+        if r.status_code == 403:
+            raise GmailAuthError("403 get_message -- scope insuficiente. B7.")
+        if r.status_code == 429:
+            raise _GmailTransientError("429 rate limit get_message")
+        if 500 <= r.status_code < 600:
+            raise _GmailTransientError(f"{r.status_code} get_message")
+        if r.status_code == 404:
+            raise GmailError(f"404 get_message msg_id={msg_id} (no existe)")
+        if r.status_code != 200:
+            raise GmailError(f"get_message {r.status_code}: {r.text[:200]}")
+
+        raw = r.json()
+        parsed = _parse_gmail_message(raw)
+        logger.info(
+            "gmail_get ok from=%s msg_id=%s subject=%r elapsed_ms=%d",
+            self._from_email, msg_id, parsed["headers"].get("subject", "")[:50], elapsed,
+        )
+        return parsed
+
+    @retry(
+        retry=retry_if_exception_type((
+            httpx.TimeoutException,
+            httpx.ConnectError,
+            _GmailTransientError,
+        )),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=4),
+        reraise=True,
+    )
+    def mark_message_as_read(self, msg_id: str) -> None:
+        """Remove UNREAD label del mensaje (idempotente)."""
+        access_token = self._get_access_function_safe()
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+        url = _GMAIL_MODIFY_URL_TEMPLATE.format(msg_id=msg_id)
+        payload = {"removeLabelIds": ["UNREAD"]}
+        started = time.monotonic()
+        r = self._client.post(url, headers=headers, json=payload)
+        elapsed = int((time.monotonic() - started) * 1000)
+
+        if r.status_code == 401:
+            self._access_token = None
+            self._access_token_expiry = None
+            raise GmailAuthError("401 modify -- scope insuficiente. B7.")
+        if r.status_code == 403:
+            raise GmailAuthError("403 modify -- scope insuficiente. B7.")
+        if r.status_code == 429:
+            raise _GmailTransientError("429 rate limit modify")
+        if 500 <= r.status_code < 600:
+            raise _GmailTransientError(f"{r.status_code} modify")
+        if r.status_code != 200:
+            raise GmailError(f"modify {r.status_code}: {r.text[:200]}")
+
+        logger.info(
+            "gmail_mark_read ok from=%s msg_id=%s elapsed_ms=%d",
+            self._from_email, msg_id, elapsed,
+        )
+
+    def _get_access_function_safe(self) -> str:
+        """Alias semantica para el access_token cache. Mantiene API privada
+        consistente entre send y read."""
+        return self._get_access_token()
+
 
 # --- Helpers ----------------------------------------------------------------
 
@@ -357,3 +515,97 @@ def _extract_error_message(body: dict[str, Any] | None) -> str:
         if isinstance(msg, str) and msg:
             return msg
     return str(body)[:200]
+
+
+def _parse_gmail_message(raw: dict[str, Any]) -> dict[str, Any]:
+    """Parsea una respuesta `users.messages.get?format=full` a un dict mas
+    manejable:
+        {
+          "id": str,
+          "threadId": str,
+          "labelIds": list[str],
+          "internalDate": datetime UTC,
+          "headers": {"from": ..., "to": ..., "subject": ...,
+                      "in-reply-to": ..., "references": ...,
+                      "message-id": ..., "date": ...},
+          "plain_body": str,
+          "html_body": str | None,
+        }
+    """
+    msg_id = str(raw.get("id", ""))
+    thread_id = str(raw.get("threadId", ""))
+    label_ids = list(raw.get("labelIds") or [])
+
+    internal_ms_raw = raw.get("internalDate")
+    if internal_ms_raw is None:
+        internal_dt = datetime.now(timezone.utc)
+    else:
+        try:
+            internal_ms = int(internal_ms_raw)
+            internal_dt = datetime.fromtimestamp(internal_ms / 1000.0, tz=timezone.utc)
+        except (TypeError, ValueError):
+            internal_dt = datetime.now(timezone.utc)
+
+    payload = raw.get("payload") or {}
+    headers_list = payload.get("headers") or []
+    headers: dict[str, str] = {}
+    for h in headers_list:
+        name = (h.get("name") or "").lower()
+        val = h.get("value") or ""
+        if name and name not in headers:  # primer header gana ante duplicados
+            headers[name] = val
+
+    plain_body, html_body = _extract_bodies(payload)
+
+    return {
+        "id": msg_id,
+        "threadId": thread_id,
+        "labelIds": label_ids,
+        "internalDate": internal_dt,
+        "headers": headers,
+        "plain_body": plain_body,
+        "html_body": html_body,
+    }
+
+
+def _extract_bodies(payload: dict[str, Any]) -> tuple[str, str | None]:
+    """Recursivamente extrae text/plain y text/html del payload Gmail.
+    Devuelve (plain_text, html_text|None). Plain text es preferido para
+    classify_replies; html se conserva por si plain esta vacio.
+    """
+    plain_parts: list[str] = []
+    html_parts: list[str] = []
+
+    def walk(node: dict[str, Any]) -> None:
+        mime = (node.get("mimeType") or "").lower()
+        body = node.get("body") or {}
+        data = body.get("data")
+        if data and mime == "text/plain":
+            plain_parts.append(_decode_b64url(data))
+        elif data and mime == "text/html":
+            html_parts.append(_decode_b64url(data))
+        for sub in node.get("parts") or []:
+            walk(sub)
+
+    walk(payload)
+    plain = "\n".join(p for p in plain_parts if p).strip()
+    html = "\n".join(h for h in html_parts if h).strip() or None
+    return plain, html
+
+
+def _decode_b64url(data: str) -> str:
+    """Gmail body data viene como base64url (sin padding). Decodifica a UTF-8."""
+    # Re-pad si falta
+    pad = (4 - len(data) % 4) % 4
+    data_padded = data + ("=" * pad)
+    try:
+        decoded = base64.urlsafe_b64decode(data_padded.encode("ascii"))
+    except Exception:
+        return ""
+    try:
+        return decoded.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            return decoded.decode("latin-1")
+        except Exception:
+            return ""

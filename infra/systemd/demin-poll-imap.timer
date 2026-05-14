@@ -1,0 +1,13 @@
+[Unit]
+Description=Timer: dispara demin-poll-imap cada 5min (Fase 3)
+Documentation=https://github.com/demin-group/demin-system
+
+[Timer]
+# Cada 5 minutos. Plan §11.1.
+OnBootSec=8min
+OnUnitActiveSec=5min
+Persistent=true
+Unit=demin-poll-imap.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Timer: dispara demin-handle-actions cada 15min (Fase 3)
+Documentation=https://github.com/demin-group/demin-system
+
+[Timer]
+# Cada 15 minutos. Tras classify_replies, handle_actions ejecuta cancel/re-engage.
+OnBootSec=18min
+OnUnitActiveSec=15min
+Persistent=true
+Unit=demin-handle-actions.service
+
+[Install]
+WantedBy=timers.target
