@@ -130,7 +130,7 @@ export async function rejectMessageAction(args: {
   const msgRow = await admin
     .from("messages")
     .select("subject, body, status, research_snapshot")
-    .eq("id", messageId(args.messageId))
+    .eq("id", args.messageId)
     .single();
   if (msgRow.error) {
     return { ok: false, error: msgRow.error.message };
@@ -184,12 +184,4 @@ export async function rejectMessageAction(args: {
 
   revalidatePath("/approval-queue");
   return { ok: true };
-}
-
-/**
- * Helper de identity para mantener el linter contento (eq necesita string y el
- * compilador valida que messageId no es undefined).
- */
-function messageId(s: string): string {
-  return s;
 }
