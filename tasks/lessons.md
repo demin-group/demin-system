@@ -1226,6 +1226,60 @@ Un lead no se considera convertido hasta que hay compromiso de fecha/hora de lla
 
 ---
 
+## 2026-05-25 — Lección 43: crear una migration NO es aplicarla; el commit con la migration es marker, no garantía de estado prod
+
+**Contexto:** sesión `/goal` 2026-05-25, Bloque -1. Detecté que las "Lecciones 5-9" que el prompt pedía añadir ya estaban en el archivo como 38-42 (sesión previa del mismo día las añadió). Pero al ir a ejecutar el resto del goal, descubrí que la migración 13 (cadencia D+14/D+28, parte del commit 251cf31 etiquetado como cierre de los cambios de producto) estaba commiteada en el repo pero **NO aplicada a prod**. Migración 12 (mailboxes.hitl_mode default true, parte de cierre Sprint 6 fcad523) tampoco aplicada. Auditoría de `_migrations`: prod tenía solo 1-11.
+
+Síntoma operativo: la BD prod seguía con `sequences.steps = [D+0/D+4/D+10]` aunque el commit 251cf31 decía "feat(product): ajustes post-12-envios -- saludo neutro + cadencia D+14/D+28 + sender-leak guard + closing sin ultimatum". Lección 39 también afirmaba "Aplicado en: migración 20260525120000_13_seq_demin_v1_cadence_d14_d28.sql". Ambos commit y lección decían "aplicado" sin que la migración hubiese pasado por `apply_migrations.py --env prod`.
+
+Adicional: cuando re-corrí `apply_migrations.py --env prod`, la migración 13 falló con `column "updated_at" of relation "sequences" does not exist` — bug en la migración (el author asumió una columna inexistente). Si la migración se hubiera aplicado en la misma sesión que la creó, este bug se habría detectado en el momento, no días después en otra sesión.
+
+**Corrección humana:** PM autorizó aplicar migraciones 12+13 en esta sesión, fix de migración 13 (quitar referencia a `updated_at`), re-aplicación con éxito, y captura de esta lección.
+
+**Regla resultante:**
+
+- **"Crear una migration" y "aplicar una migration" son dos acciones distintas.** El primer commit debe incluir EXPLÍCITAMENTE el output de `apply_migrations.py --env prod` (y dev si aplica) en el commit message o en una entrada §19 del plan, citando el OK de cada migración aplicada. Si solo se crea el archivo `.sql` sin aplicar, el commit message NO puede decir "aplicado" — debe decir "creado, pendiente aplicar en prod".
+- **Verificación automática:** al cerrar cualquier feature que dependa de schema changes, hacer un check final SQL contra prod (`select * from _migrations order by applied_at desc limit 5`) y confirmar que las migrations esperadas aparecen. Sin ese check, "lección aplicada" es una afirmación no verificada.
+- **Migrations deben probarse al menos contra dev antes de marcar como hecho.** Si dev está offline (caso de hoy con `demin-dev` decomisado), probar contra el schema en local con `psql -f migration.sql` apuntando a un BD throwaway. Crear una migration que falle en prod desperdicia el slot de número + obliga a editarla retroactivamente, lo cual es feo y rompe la inmutabilidad de migraciones aplicadas.
+- **El plan §19 debe registrar explícitamente "migración N aplicada a {dev|prod}" como entrada propia**, no envuelta en bullet de feature genérico. Auditoría futura debe poder responder "¿migración X está en prod?" desde §19 sin tener que abrir BD.
+
+**Aplicable más allá de DEMIN:** cualquier proyecto con migraciones SQL versionadas (Flyway, Alembic, Knex, Prisma, etc.). El antipattern es universal: el repo cree que ya aplicó algo porque el archivo existe; la realidad operativa va por separado.
+
+**Aplicado en:**
+- Migraciones 12 + 13 aplicadas a prod en esta sesión via `scripts/apply_migrations.py --env prod`.
+- Migración 13 editada: quitada referencia a `sequences.updated_at` (columna inexistente). Nota inline en la propia migración explicando el fix retroactivo.
+- Migración 14 (`message_revisions`, Bloque 7) creada Y aplicada en la misma sesión, validada con `\d message_revisions` post-apply.
+- Esta lección.
+
+**Trigger de aplicación inmediata:** próxima migración (cualquier numero >14). Antes de commitear el archivo `.sql`, aplicar con `apply_migrations.py --env prod` (con confirmación interactiva `yes`) o `dev` según corresponda. Incluir el output del apply en el commit message. Si la aplicación falla, fix de la migración antes de commitear nada.
+
+---
+
+## 2026-05-25 — Lección 44: cancelar y regenerar son operaciones semánticamente distintas — la cola de cadencia no debe confundirlas en el filtro NOT EXISTS
+
+**Contexto:** sesión `/goal` 2026-05-25, Bloque 5.2. Tenía que cancelar 7 reframes que se generaron con cadencia agresiva D+4 (pre-migración 13), con la expectativa explícita del PM en el prompt: "Se regenerarán automáticamente cuando follow_ups detecte el step 0 sent con la nueva cadencia [D+14]". Al revisar `follow_ups.fetch_followup_candidates`, el SQL hacía `NOT EXISTS (SELECT 1 FROM messages WHERE step_index = :next_step)` — sin filtrar por status. Eso significa: un draft cancelado al step N bloquea regeneración futura al mismo step N exactamente igual que un draft enviado. La intuición del PM ("cancelar libera el slot para regenerar") chocaba con el comportamiento real ("cancelar petrifica el slot para siempre").
+
+**Corrección autónoma (esta sesión, con autoridad delegada del goal):** modifiqué el SQL para excluir status='cancelled' del check. Drafts cancelados ya no cuentan como "ya intentado este step" — un follow_ups posterior los re-evalúa y regenera con prompts actuales y cadencia actual.
+
+**Regla resultante:**
+
+- **Diseñar filtros idempotentes ("evita duplicar trabajo") con conciencia de los estados terminales válidos.** Para una entidad como `messages.status` con 7 valores (`drafted`, `approved`, `queued`, `sending`, `sent`, `cancelled`, `scheduled`), el filtro "ya hay uno aquí" rara vez es "cualquier status existe" — es más bien "hay uno en alguno de los estados activos". `cancelled` es un estado de cierre, NO de actividad — debe excluirse de las queries que buscan "qué falta hacer".
+- **Convención sugerida para futuros workers que iteren entidades con flag de status:** definir una constante `ACTIVE_STATUSES` en el módulo (ej. `{'drafted', 'approved', 'queued', 'sending', 'sent', 'scheduled'}`) y usarla en todos los filtros idempotentes. No hardcodear "status <> 'cancelled'" en cada query — más limpio y central.
+- **Cancelar es un opt-out reversible del slot, no del contact.** Si quieres cancelar Y no regenerar, debes hacer dos acciones: cancelar el message + algún flag al contact (is_optout, is_primary=false, cooling event). Cancelar el draft solo NO debe bloquear futuras intentonas — eso es opt-out implícito y confuso.
+- **Lección hermana de 28 y 29.** Lección 28 dijo "cruzar TODAS las decisiones del plan con los filtros del worker". Lección 29 dijo "ordenar dimensiones cualitativas antes que cuantitativas en sort_key". Lección 44 es "distinguir estados activos de estados terminales en filtros de duplicación" — el patrón común: el SQL de iteración requiere reflexión sobre qué dimensiones cuentan para "ya hecho", "no aplicable", "actividad".
+
+**Aplicable más allá de DEMIN:** cualquier sistema con cola de trabajo iterado y status de entidades con cierre — queue de jobs, tickets de soporte (open vs resolved vs cancelled), pull requests (open vs merged vs closed), tareas de cualquier tipo.
+
+**Aplicado en:**
+- `apps/workers/outreach/follow_ups.py` `fetch_followup_candidates`: filtro NOT EXISTS de m_next amplía con `AND m_next.status <> 'cancelled'`.
+- `apps/workers/tests/test_follow_ups.py`: guard `test_followup_sql_excludes_cancelled_from_next_step_check` que ancla el cambio contra regresión por inspeccion del source.
+- Script `scripts/cancel_drafts_2026_05_25.py`: cancela los 7 reframes Y enfría Jaime con `is_primary=false` + evento contact_cooling — combinando cancelación de slot con desactivación del contact (separadas) según la regla.
+- Esta lección.
+
+**Trigger de aplicación inmediata:** próxima vez que diseñe o revise un filtro idempotente sobre entidades con status. Antes de commitear el SQL, listar explícitamente los status terminales (cancelled, archived, deleted, rejected, expired, etc.) y verificar que el filtro los excluye apropiadamente. Misma regla aplica a fetch_pending_contacts (generate_draft) — verificar si ya tiene este patrón o si requiere extensión similar.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
