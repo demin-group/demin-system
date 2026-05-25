@@ -46,3 +46,26 @@ def test_follow_up_step_construction() -> None:
 
 # Tests de SQL fetch_followup_candidates y load_sequence_steps requieren BD
 # real -- quedan como smoke manual del PM con --dry-run.
+
+
+# --- SQL strings: guard contra regresion 2026-05-25 -----------------------
+
+
+def test_followup_sql_excludes_cancelled_from_next_step_check() -> None:
+    """Sesion 2026-05-25: el filtro NOT EXISTS de m_next debe excluir
+    status='cancelled' para permitir que drafts cancelados (porque la
+    cadencia o el prompt cambiaron) se regeneren en la siguiente corrida del
+    follow_ups cron. Sin este filtro, cancelar bloquea regeneracion futura
+    igual que un envio exitoso, lo cual rompe el flujo "cancelar viejo +
+    esperar regen con nueva cadencia D+14".
+    """
+    import inspect
+
+    from outreach import follow_ups
+
+    src = inspect.getsource(follow_ups.fetch_followup_candidates)
+    # El SQL debe incluir el guard de cancelled.
+    assert "m_next.status <> 'cancelled'" in src, (
+        "fetch_followup_candidates debe excluir status='cancelled' del NOT "
+        "EXISTS check de m_next; ver sesion 2026-05-25 / Bloque 5.2."
+    )

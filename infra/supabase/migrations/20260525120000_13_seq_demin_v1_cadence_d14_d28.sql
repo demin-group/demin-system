@@ -27,13 +27,16 @@
 -- ════════════════════════════════════════════════════════════════════════════
 
 -- ─── 1. Cadencia D+0/D+14/D+28 (Lección 39) ─────────────────────────────────
+-- NOTA 2026-05-25 (segunda corrida tras fallo): la versión original
+-- escribía también `updated_at = now()`, pero `sequences` no tiene esa
+-- columna en el schema actual (migration 02 solo creó id, nombre,
+-- is_active, steps). Removido para que la migración aplique limpia.
 update sequences
 set steps = '[
     {"day": 0,  "angle": "opening"},
     {"day": 14, "angle": "reframe"},
     {"day": 28, "angle": "closing"}
-  ]'::jsonb,
-    updated_at = now()
+  ]'::jsonb
 where nombre = 'demin_v1';
 
 -- ─── 2. COMMENT actualizado (refleja Lección 39) ────────────────────────────

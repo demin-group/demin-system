@@ -149,6 +149,7 @@ def fetch_followup_candidates(
               SELECT 1 FROM messages m_next
               WHERE m_next.contact_id = ct.id
                 AND m_next.step_index = :next_step
+                AND m_next.status <> 'cancelled'
           )
           AND NOT EXISTS (
               SELECT 1 FROM replies r
