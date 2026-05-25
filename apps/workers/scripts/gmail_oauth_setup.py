@@ -10,7 +10,11 @@ Setup previo (humano en Google Cloud Console, una sola vez):
 2. APIs & Services -> Library -> "Gmail API" -> Enable.
 3. APIs & Services -> OAuth consent screen:
    - User type: External (o Internal si Google Workspace).
-   - Scopes: anadir `https://www.googleapis.com/auth/gmail.send`.
+   - Scopes: anadir `https://www.googleapis.com/auth/gmail.modify`.
+     (Cubre send + readonly + marcar como leido. Requerido por
+     poll_imap.py para leer respuestas y marcarlas tras procesar; el
+     antiguo scope `gmail.send` solo permitia enviar y se quedaba corto
+     para Fase 3. Ver bloqueador B7 en §19 y Leccion 36.)
    - Test users: anadir gonzalo.perez@demingroupmadrid.com (mientras esten
      en modo "Testing"; en "Production" no hace falta whitelist).
 4. APIs & Services -> Credentials -> Create Credentials -> OAuth client ID:
@@ -33,7 +37,12 @@ Comportamiento:
 - Abre tu browser default en la URL de autorizacion de Google.
 - Inicias sesion CON LA CUENTA DEL BUZON (gonzalo.perez@...), no la tuya.
   El refresh_token sera para esa cuenta especifica.
-- Autorizas el scope gmail.send.
+- Autorizas el scope gmail.modify.
+  (El consent screen anunciara "Leer, redactar, enviar y eliminar
+  permanentemente todos tus emails". Es lo que Google obliga a decir
+  para gmail.modify aunque el codigo NO borra emails; solo lee y marca
+  como leido. Ver docs/oauth_reauthorize_gmail.md para el detalle del
+  aviso que vera Gonzalo.)
 - Google redirige a localhost:<puerto-efimero> donde el script captura el
   authorization_code.
 - Script intercambia code -> access_token + refresh_token.
@@ -65,7 +74,11 @@ from pathlib import Path
 # google_auth_oauthlib esta en pyproject como dependencia.
 from google_auth_oauthlib.flow import InstalledAppFlow  # type: ignore[import-untyped]
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
+# Scope unico gmail.modify cubre send + readonly + label modify.
+# Antes de Leccion 36 / B7 (Sprint 5 Fase 3) este script usaba gmail.send
+# y poll_imap fallaba con 403. Cambio 2026-05-25: ampliacion a gmail.modify
+# para que la re-autorizacion humana cubra de una sola vez ambos flujos.
+SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
 
 def main() -> int:
