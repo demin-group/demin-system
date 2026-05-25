@@ -1062,6 +1062,170 @@ Code procesó: 4 commits Fase A (poblamiento), 4 systemd units VPS paso 8, 5 com
 
 ---
 
+## 2026-05-25 — Lección 38: pausa de Lemwarm tras un mes de warmup y score 97/100 validado
+
+**Contexto:** el buzón `gonzalo.perez@demingroupmadrid.com` lleva ~1 mes en warmup continuo con Lemwarm. Score actual **97/100**, **802 emails calentando acumulados, 0 blacklists**, mensaje del propio Lemwarm: *"You can start your campaigns"*. Coste Lemwarm: ~29€/mes. Total mensual del sistema: ~70€/mes sobre techo de 150€ (hay margen, pero la línea Lemwarm es la más fácil de optimizar sin riesgo).
+
+**Decisión PM (2026-05-25):** cancelar Lemwarm. Ahorro: ~29€/mes.
+
+**Razón:** el score 97/100 ya valida la reputación del dominio + buzón; mantener warmup activo cuando hay envío productivo regular es redundante (el propio outreach genera tráfico human-like que mantiene la reputación). Lemwarm cumplió su función como puente entre dominio nuevo y primer batch productivo (paso 7 cap 20/día Lección 30); a partir de aquí el propio sistema sostiene la deliverability.
+
+**Regla resultante:**
+
+- **El warmup externalizado (Lemwarm o equivalente) es una palanca de arranque, no un coste recurrente perpetuo.** Una vez el score del proveedor llega a ≥95/100 sostenido + ≥4 semanas + ≥500 emails calentando + envío productivo regular en curso, el ROI del warmup activo cae a cero. Cancelar libera presupuesto sin degradar deliverability.
+- **Trigger de cancelación:** los 4 criterios juntos (score, tiempo, volumen, productivo activo). Si falta alguno (ej. pausa de outreach >2 semanas por holiday), reactivar Lemwarm antes de reanudar — la reputación caduca con la inactividad (capturado en Lección 27 al final).
+- **Reactivación de emergencia:** si en algún momento Postmaster Tools muestra degradación del dominio (warning amarillo/rojo) o bounce rate >2% sostenido, reactivar Lemwarm como medida correctiva. Coste de reactivación: 29€ del primer mes + 2-3 semanas para volver a score >90.
+- **Aplicable más allá de DEMIN:** cualquier servicio externo de "warmup" o "reputation booster" tiene la misma curva — útil al arranque, redundante en operación continua, reactivable si hay degradación. Aplica también a calentamiento de cuentas LinkedIn, dominios secundarios, números SMS para 2FA, etc.
+
+**Acción humana ejecutada (PM):** cancelación en panel Lemwarm (`lemlist.com` → Settings → Billing → Cancel Lemwarm subscription). No afecta a Lemlist core si en algún momento se contrata Lemlist Sales Engine — son productos separados con billing separado.
+
+**Aplicado en:**
+- `tasks/todo.md` §17 actualizado: Lemwarm pasa de "29-58€/mes" a "0€ (cancelado 2026-05-25 — ver Lección 38)".
+- `tasks/todo.md` §4 stack técnico: nota inline "cancelado tras validación reputación (Lección 38)".
+- `tasks/todo.md` §19 entrada del 2026-05-25 con la decisión y ahorro.
+- `tasks/lessons.md` esta lección.
+
+**Numeración corregida:** PM tituló el input "Lección 9" — typo evidente (la 9 está ocupada desde 2026-04-29 con "el KB capturado en sesión 1 desvía del plan en 6 puntos"). La numeración correcta es **38** siguiendo Lección 37 (2026-05-14). Patrón ya cubierto por Lección 20 (verificar último número con grep antes de elegir el siguiente).
+
+---
+
+## 2026-05-25 — Lección 39: cambios de producto tras 12 envíos en producción (saludo, footer, cadencia, criterio interesado)
+
+**Contexto:** tras observar los primeros 12 envíos productivos entre el 14 y el 19 de mayo, el PM identificó cinco ajustes de producto necesarios antes de escalar el sistema a modo autónomo. Los cambios responden a feedback de calidad del contenido generado y a una recalibración de la cadencia operativa.
+
+**Decisiones (todas cerradas por PM):**
+
+### 1. Saludo neutro en correo de apertura
+
+El LLM debe abrir el cuerpo del correo de apertura con un saludo cercano y NEUTRO (sin marca temporal) antes de entrar en materia. Varía con criterio entre fórmulas naturales:
+
+- "Buenas [nombre], espero que estés bien"
+- "Hola [nombre], espero que te pille bien"
+- "Buenas [nombre], te escribo porque..."
+- Variantes equivalentes sin marca temporal
+
+**PROHIBIDO** "Buenos días" y "Buenas tardes" o cualquier saludo con franja horaria. Razón: el correo puede enviarse a una hora y abrirse muchas horas después; un saludo desincronizado con la hora real del destinatario delata el envasado en serie y queda raro.
+
+Sin emojis, sin signos de exclamación. Mantiene el límite de 130 palabras del cuerpo.
+
+Aplica solo al `opening`. El `reframe` y el `closing` no llevan saludo de apertura (son continuación de hilo).
+
+### 2. Footer: "Un saludo" en lugar de "Un abrazo"
+
+En `apps/workers/outreach/send_gmail.py`, la constante `_FOOTER` cierra con "Un saludo". La línea "Quedo atento a vuestra respuesta" se mantiene en el cuerpo del correo, no en el footer.
+
+### 3. Cadencia D+14 / D+28 (sustituye D+12 / D+30 de Lección 4)
+
+La secuencia activa `demin_v1` pasa a:
+
+```json
+[
+  {"day": 0,  "angle": "opening"},
+  {"day": 14, "angle": "reframe"},
+  {"day": 28, "angle": "closing"}
+]
+```
+
+**Esto sustituye explícitamente la cadencia D+0/D+12/D+30 indicada en la Lección 4.** La razón: PM detectó en producción que la cadencia real ejecutándose era ~D+5 (Jaime de Lena recibió opening el 14 may y reframe el 19 may), demasiado agresiva. Se elige D+14/D+28 como ritmo más natural y menos invasivo para B2B.
+
+Mensajes con `status='scheduled'` no enviados aún deben recalcular `scheduled_for` según la nueva cadencia tomando como base `sent_at` del step 0. Los ya enviados no se tocan.
+
+### 4. Respuestas tibias NO son `interesado`
+
+En `classify_replies.md`: respuestas tipo "me guardo tus datos", "lo tendré en cuenta", "ya te diré", "interesante, hablamos cuando haga falta" se clasifican como `no_ahora` (no como `interesado`). Disparan re-engage a +60 días.
+
+Solo cuenta como `interesado` una respuesta que pide reunión, llamada, presupuesto o equivalente compromiso CONCRETO con fecha/hora o intención clara de agendar.
+
+### 5. Criterio de éxito real del seguimiento = llamada agendada
+
+Un lead no se considera convertido hasta que hay compromiso de fecha/hora de llamada o reunión con Gonzalo. Hasta entonces se sigue insistiendo vía follow-up del modo normal (sin saltarse cadencia). El opt-out explícito sigue siendo, como siempre, el único motivo de exclusión permanente.
+
+**Aplicado en (sesión 2026-05-25):**
+
+- `apps/workers/shared/prompts/generate_email_opening.md` v2: sección SALUDO neutro + ejemplos.
+- `apps/workers/shared/prompts/generate_email_reframe.md` v2: cabecera "Hace 14 días" + nota saludo neutro.
+- `apps/workers/shared/prompts/generate_email_closing.md` v2: cabecera "Han pasado 28 días".
+- `apps/workers/outreach/send_gmail.py`: `_FOOTER` con "Un saludo," (era "Un abrazo,").
+- `apps/workers/tests/test_send_gmail.py`: `test_footer_contains_standard_closing` actualizado + regresión guard de "Un abrazo,".
+- `apps/workers/shared/prompts/classify_reply.md` v2: `interesado` restringido a compromiso concreto + `no_ahora` ampliado con tibias.
+- `apps/workers/outreach/follow_ups.py`: docstring D+14/D+28.
+- `infra/supabase/migrations/20260525120000_13_seq_demin_v1_cadence_d14_d28.sql`: UPDATE sequences.steps + recálculo defensivo de `messages.status='scheduled'`.
+- `apps/workers/tests/test_prompts_generate_email.py`: `test_opening_forbids_temporal_greeting`, `test_opening_mentions_neutral_greeting_variants`, `test_reframe_mentions_d14_in_system`, `test_closing_mentions_d28_in_system`.
+- `tasks/todo.md` §9.2 actualizada con cadencia D+14/D+28.
+
+---
+
+## 2026-05-25 — Lección 40: el email del remitente NUNCA va en el cuerpo del LLM
+
+**Contexto:** en el draft de Lena Construcciones (step 2 closing para Jaime Nozaleda) apareció en el cuerpo `gonzalo@demingroup.es`, dominio incorrecto (el correcto es `gonzalo.perez@demingroupmadrid.com`). Independientemente de si fue alucinación del LLM, dominio viejo en algún prompt, o copy-paste de un caso de prueba, el patrón de poner el correo del remitente en el cuerpo genera una clase entera de bugs evitables.
+
+**Decisión PM (cierre del problema en origen):** el correo del remitente, el teléfono y la web van EXCLUSIVAMENTE en la firma generada por `send_gmail.py`. NUNCA en el cuerpo redactado por el LLM. Esto elimina toda posibilidad de error de dominio/email en el cuerpo.
+
+**Regla resultante:**
+
+- Todos los prompts de generación (`generate_email_opening.md`, `generate_email_reframe.md`, `generate_email_closing.md`, `generate_email_re_engage_*.md`) deben incluir una sección "PROHIBIDO" con la regla explícita: "NUNCA escribas el email del remitente, su teléfono ni su web en el cuerpo. La firma se añade automáticamente después. Si quieres dejar el contacto abierto, usa frases del tipo 'quedo a vuestra disposición' o 'podéis escribirme cuando os venga bien' sin incluir datos de contacto."
+- Validación post-generación en `generate_draft.py` (§10.3 del plan): regex que rechaza cualquier `body` que contenga `@demingroupmadrid.com`, `gonzalo@demingroup.es` (dominio viejo), teléfono o web suelta. Si lo detecta: regenera (máx 2 reintentos) y luego marca para revisión humana con `_failed_validations: ['has_sender_leak']`.
+- La firma de `send_gmail.py` se verifica que incluye: nombre, cargo, email correcto, teléfono, web.
+
+**Por qué importa:** cualquier dato de contacto en el cuerpo es un punto de fallo. Si el LLM alucina un dominio (caso real arriba), el destinatario lo ve y la credibilidad del correo se hunde. Mantener email/teléfono/web SOLO en la firma generada por código garantiza que el dato sea siempre el correcto.
+
+**Aplicado en (sesión 2026-05-25):**
+
+- Bloque "PROHIBIDO — CONTACTO EN EL CUERPO" en los 3 prompts `generate_email_{opening,reframe,closing}.md` v2.
+- `apps/workers/pipeline/generate_draft.py`: `_SENDER_LEAK_RE` regex multi-variante + integración en `validate_post_generation` (devuelve `has_sender_leak` al fallar).
+- `apps/workers/tests/test_generate_draft.py`: parametrizado con 13 variantes positivas (incluido el caso real `gonzalo@demingroup.es`) + 2 casos negativos (sin sender leak / email tercero no dispara).
+- `apps/workers/tests/test_prompts_generate_email.py`: `test_prompt_forbids_sender_contact_in_body` parametrizado sobre los 3 prompts.
+
+---
+
+## 2026-05-25 — Lección 41: bugs detectados en producción tras 12 envíos — cadencia agresiva y pool de contactos pequeño
+
+**Contexto:** PM revisó la cuenta `gonzalo.perez@demingroupmadrid.com` el 25 de mayo y detectó dos anomalías graves en el comportamiento del sistema en producción:
+
+1. **Cadencia mal calibrada.** Jaime Nozaleda (Lena Construcciones) recibió el opening el 14 de mayo y el reframe el 19 de mayo — solo 5 días después, no 14 como dice el plan ni 12 como dice la Lección 4. Tampoco coincide con la cadencia original §9.2 del plan (D+0/D+4/D+10). Algo está leyendo mal `sequences.steps` o tiene fechas hardcoded en `follow_ups.py`. **Diagnóstico cerrado:** `sequences.steps` seedeada en migration 11 venía con la cadencia §9.2 D+0/D+4/D+10 (no la Lección 4 D+0/D+12/D+30). El ~D+5 observado es D+4 + jitter de la ventana de cron. Resolución: migración 13 reescribe `sequences.steps` a D+0/D+14/D+28 (Lección 39).
+
+2. **Pool de contactos sospechosamente pequeño.** 12 envíos productivos en 5 días, pero parte de esos 12 son toques múltiples a los mismos contactos (Jaime ha recibido ya 2 y tiene un 3º en cola). Esto sugiere que el universo de empresas que han pasado todos los filtros (`ia_fit='fit'` + `research_done_at` + email verificado + sin opt-out) es minúsculo, y `replenish` está machacando a los mismos contactos en lugar de avanzar.
+
+**Regla resultante:**
+
+- Antes de cualquier nuevo batch de drafts y antes del switch a autónomo, hay que auditar con queries SQL el pool real de contactos elegibles vírgenes (sin mensajes previos). Distribución por tier obligatoria. Implementado en `apps/workers/scripts/audit_pool_contacts.py` (script nuevo de la sesión).
+- Si el pool elegible es <100 contactos vírgenes: expandir a T2 y T1 antes de generar más drafts; o relanzar `research_prospect.py` / `find_contacts.py` sobre subsets que no los tengan.
+- `replenish` debe verificar explícitamente que NO reescribe a contactos con mensajes previos en `('sent','scheduled','drafted','approved')`. Auditado en `auto_replenish.count_contacts_without_draft` (filtro `NOT EXISTS messages` ya está en sitio — verificado contra `apps/workers/pipeline/auto_replenish.py:113-116` en sesión 2026-05-25, NO es un bug, el filtro es correcto). El cross-check `auditoria==replenish` se ejecuta en `audit_pool_contacts.py --env prod`.
+- Pool mínimo para activar modo autónomo: ≥100 contactos vírgenes elegibles. Documentado en `tasks/todo.md` §10.4 nueva (sesión 2026-05-25).
+
+**Por qué importa:** un sistema autónomo con cadencia agresiva sobre un pool minúsculo es la receta para quemar el dominio en semanas. Si machacas a los mismos 5 contactos cada 5 días, alguno marca spam y se cae la deliverability del dominio entero.
+
+**Aplicado en (sesión 2026-05-25):**
+
+- `apps/workers/scripts/audit_pool_contacts.py` — script SQL de auditoría con breakdown por tier + cross-check contra `auto_replenish` + veredicto de threshold + conteo de messages por status.
+- Migración 13 (descrita en Lección 39): la cadencia agresiva D+0/D+4/D+10 se reescribe a D+0/D+14/D+28.
+- `tasks/todo.md` §10.4 nueva: "Condiciones para activar modo autónomo" incluyendo "pool ≥100 contactos vírgenes elegibles" como condición.
+- Auditoría humana del replenish: filtros `NOT EXISTS messages` en `apps/workers/pipeline/auto_replenish.py:113-116` verificados correctos en sesión.
+
+---
+
+## 2026-05-25 — Lección 42: el prompt de closing no puede tener tono pasivo-agresivo ni ultimátum
+
+**Contexto:** el draft step 2 (closing) generado para Jaime Nozaleda (Lena Construcciones) tenía asunto "Último correo de mi parte" y cerraba con "¿Es algo que podría tener sentido más adelante o lo descartamos definitivamente?". Esto es pasivo-agresivo: fuerza al destinatario a decir "no" para quitarse el correo de encima en lugar de dejar la puerta abierta de forma honesta. Además contradice el principio de DEMIN de "trato cercano y flexible" (valor n.º 5 del dossier).
+
+**Corrección PM:** un closing nunca puede ser un ultimátum. Su función es cerrar el hilo dejando la puerta abierta para el futuro, no presionar para una respuesta inmediata. La asimetría psicológica del "quítame o di que no" quema reputación con un coste de oportunidad enorme (las personas cambian de empresa, los proyectos cambian — Lección 1).
+
+**Tensión resuelta:** la v1 del prompt de closing (`generate_email_closing.md`, Sprint 4 paso 5) consideraba la pregunta sí/no estructural — "alimenta el clasificador §11". En sesión 2026-05-25 se evalúan tres opciones (mantener dicotomía suavizada / pregunta abierta no binaria / eliminar pregunta). El PM elige el comportamiento más respetuoso de la marca: **pregunta abierta sin binario forzado**. El clasificador §11 sigue recibiendo señal sobre las respuestas que SÍ lleguen; los silencios post-closing van por defecto a `no_ahora` → re_engage +60d (Lección 1), igual que antes. La señal estructural se mueve del prompt al comportamiento downstream (silencio = no_ahora, no `no_interesado`).
+
+**Regla resultante para `generate_email_closing.md` (y por analogía para los `re_engage`):**
+
+- **Asunto:** PROHIBIDO "Último correo", "Última oportunidad", "Me rindo", "Cierro contacto" en tono de queja, o cualquier variante de despedida con presión. Asunto neutro tipo "Quedo a vuestra disposición", "Por si os encaja más adelante" o similar.
+- **Tono del cuerpo:** honesto y abierto. La idea es "si no es el momento, lo entiendo; quedo a disposición cuando os venga bien".
+- **Prohibido en el cuerpo:** preguntas binarias que fuercen al "no" ("¿lo descartamos?", "¿paso página?", "¿zanjamos el tema?"); frases que cuenten el número de correos previos en tono de queja ("es la tercera vez que escribo", "ya van dos correos sin respuesta"); cualquier insinuación de molestia.
+- **Deseable en el cuerpo:** agradecer brevemente el tiempo, dejar abierto que pueden escribir cuando coordinen demolición, mencionar que es la última vez que escribimos por ahora (sin tono de queja).
+
+**Aplicado en (sesión 2026-05-25):**
+
+- `apps/workers/shared/prompts/generate_email_closing.md` v2: secciones PROHIBIDO + reescritura del OBJETIVO DEL CORREO + reescritura de ADAPTACIÓN POR EMAIL_TYPE con patrones honestos sin "una última vez" en tono de queja.
+- `apps/workers/tests/test_prompts_generate_email.py`: `test_closing_forces_yes_no_categorization` reemplazado por `test_closing_invites_without_forced_dichotomy` + `test_closing_forbids_aggressive_subject` (ambos verifican que la versión v2 prohíbe explícitamente los patrones pasivo-agresivos).
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>

@@ -14,13 +14,18 @@ es 3 RPM → ~22s entre embeds; paralelizar saturaría rate limit.
 `embed_documents.py` y `smoke_kb_retrieval.py` siguen el mismo patrón.
 Cuando Voyage tenga payment method, los sleeps van a 0 trivialmente.
 
-**Validaciones automáticas (§10.3 — 4 de 5)**:
+**Validaciones automáticas (§10.3)**:
 - body entre 50 y 180 palabras
 - subject entre 3 y 8 palabras
 - ni body ni subject contienen emojis ni signos de exclamación
 - ni body ni subject contienen patrones tipo "garantiz", "en N días", "por N €"
+- **(Lección 40, 2026-05-25)** ni body ni subject contienen email del
+  remitente (`@demingroupmadrid.com`, `gonzalo.perez@`), teléfono
+  (`692 319 217`, `+34 692 319 217`) ni web suelta (`demingroupmadrid.com`).
+  El footer se añade en `send_gmail._FOOTER`; si el LLM mete contacto en
+  el cuerpo, regenera; si tras retries persiste, marca _failed_validations.
 - (omitida) "no nombres inventados" — verificación contra research_data es
-  frágil; la cubre el HITL humano del paso 6.
+  frágil; la cubre el HITL humano.
 
 Si todas las validaciones fallan tras 2 reintentos LLM, el draft se inserta
 igualmente con `_failed_validations` en `research_snapshot` para que el
@@ -83,6 +88,24 @@ _PROMISE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Leccion 40 (2026-05-25): el LLM no debe meter el email/telefono/web del
+# remitente en el cuerpo -- la firma se anade en send_gmail._FOOTER. Si lo
+# mete, hay riesgo de dominio mal escrito (alucinacion del LLM) o de
+# duplicacion con la firma. El draft de LENA CONSTRUCCIONES del 2026-05-25
+# trajo `gonzalo@demingroup.es` (dominio incorrecto, el correcto es
+# `demingroupmadrid.com`). Reject draft -> regenerate up to 2 retries.
+_SENDER_LEAK_RE = re.compile(
+    r"(@demingroup(?:madrid)?(?:\.[a-z]+)+"   # @demingroupmadrid.com, @demingroup.es, etc.
+    r"|gonzalo[.\s]*perez\s*@"                 # gonzalo.perez@... o gonzalo perez @...
+    r"|gonzalo\s*@demingroup"                  # gonzalo@demingroup...
+    r"|\+?\s*34[\s\-.]*692[\s\-.]*319[\s\-.]*217"  # +34 692 319 217 con variantes
+    r"|\b692[\s\-.]*319[\s\-.]*217\b"          # 692 319 217 sin prefijo
+    r"|\bdemingroupmadrid\.com\b"              # web suelta en cuerpo
+    r"|\bdemingroup\.es\b"                     # dominio antiguo (no usar)
+    r")",
+    re.IGNORECASE,
+)
+
 logger = logging.getLogger("demin.generate_draft")
 if not logger.handlers:
     logging.basicConfig(
@@ -129,7 +152,7 @@ class Result:
 
 
 def validate_post_generation(subject: str, body: str) -> list[str]:
-    """Aplica las 4 reglas de §10.3 sobre el output del LLM. Devuelve lista
+    """Aplica las reglas de §10.3 sobre el output del LLM. Devuelve lista
     de etiquetas de fallo (vacía = todo OK).
 
     Reglas:
@@ -137,6 +160,8 @@ def validate_post_generation(subject: str, body: str) -> list[str]:
         2. subject entre 3 y 8 palabras.
         3. ni body ni subject contienen emojis ni `!`.
         4. ni body ni subject prometen plazos/precios.
+        5. (Leccion 40) ni body ni subject filtran email/telefono/web del
+           remitente -- la firma se anade en send_gmail._FOOTER.
     """
     failures: list[str] = []
     body_words = len(body.split())
@@ -158,6 +183,9 @@ def validate_post_generation(subject: str, body: str) -> list[str]:
 
     if _PROMISE_RE.search(body) or _PROMISE_RE.search(subject):
         failures.append("has_promise")
+
+    if _SENDER_LEAK_RE.search(body) or _SENDER_LEAK_RE.search(subject):
+        failures.append("has_sender_leak")
 
     return failures
 

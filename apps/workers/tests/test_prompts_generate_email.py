@@ -173,18 +173,30 @@ def test_reframe_mentions_distinct_hook() -> None:
     assert "hook b" in text_lower or "no repitas" in text_lower or "distinto" in text_lower
 
 
-def test_closing_forces_yes_no_categorization() -> None:
-    """El sub-objetivo estructural del closing (alimenta §11 + D13) requiere
-    que el LLM formule una pregunta sí/no que fuerce categorización entre
-    'más adelante' y 'descartado definitivamente'. Confirmamos que el system
-    instruye explícitamente esa dicotomía."""
+def test_closing_invites_without_forced_dichotomy() -> None:
+    """Lección 42 (2026-05-25): el closing v2 invita al 'más adelante' sin
+    forzar pregunta dicotómica. El prompt debe (a) mencionar la idea de
+    'más adelante' / 'futuro' como puerta abierta, (b) prohibir
+    explícitamente las preguntas binarias del tipo '¿lo descartamos?'
+    que eran el patrón pasivo-agresivo de la v1."""
     _, system, _ = _load("closing")
     text_lower = system.lower()
-    # No exigimos la formulación canónica literal (el LLM puede adaptarla),
-    # pero sí que el system instruya las dos opciones excluyentes.
+    # Sigue invitando al "más adelante" como puerta abierta.
     assert "más adelante" in text_lower or "mas adelante" in text_lower
-    assert "descart" in text_lower  # "descartar" / "descartado" / "descartamos"
-    assert "sí/no" in text_lower or "si/no" in text_lower or "dicotom" in text_lower
+    # Prohibe explícitamente la pregunta binaria forzada (Lección 42).
+    assert "prohibido" in text_lower
+    assert "lo descartamos" in text_lower  # aparece como ejemplo prohibido
+    # La sección PROHIBIDO debe estar visible en el system.
+    assert "binarias" in text_lower or "ultim" in text_lower or "pasivo" in text_lower
+
+
+def test_closing_forbids_aggressive_subject() -> None:
+    """Lección 42: el closing v2 prohíbe asuntos tipo 'Último correo',
+    'Última oportunidad', etc."""
+    _, system, _ = _load("closing")
+    text_lower = system.lower()
+    assert "último correo" in text_lower or "ultimo correo" in text_lower
+    assert "última oportunidad" in text_lower or "ultima oportunidad" in text_lower
 
 
 def test_closing_body_word_limit_is_shorter() -> None:
@@ -210,3 +222,69 @@ def test_prompt_has_version_header(angle: str) -> None:
     "Versión X" para que cualquier cambio de prompt sea trazable."""
     raw, _, _ = _load(angle)
     assert re.search(r"Versi[oó]n\s+\d", raw), f"{angle}: cabecera sin versión"
+
+
+# ─── 9. Lección 39 — saludo neutro sin marca temporal en opening ───────────
+
+
+def test_opening_forbids_temporal_greeting() -> None:
+    """Lección 39 (2026-05-25): el opening debe prohibir explícitamente
+    'Buenos días' y 'Buenas tardes' (saludos con marca temporal). Razón:
+    el correo se abre muchas horas después de enviarse y un saludo
+    desincronizado delata el envasado en serie."""
+    _, system, _ = _load("opening")
+    text_lower = system.lower()
+    assert "buenos días" in text_lower or "buenos dias" in text_lower
+    assert "buenas tardes" in text_lower
+    assert "saludo" in text_lower
+    # La prohibición debe estar marcada explícitamente
+    assert "prohibido" in text_lower or "no uses" in text_lower or "sin marca temporal" in text_lower
+
+
+def test_opening_mentions_neutral_greeting_variants() -> None:
+    """El opening debe mencionar las variantes de saludo neutro
+    permitidas para que el LLM las use rotativamente."""
+    _, system, _ = _load("opening")
+    # Al menos una de las variantes canónicas debe aparecer como ejemplo.
+    canonical_variants = [
+        "espero que estés bien",
+        "espero que te pille bien",
+        "te escribo porque",
+    ]
+    assert any(v in system.lower() for v in canonical_variants), (
+        "opening: no menciona ninguna variante canónica de saludo neutro"
+    )
+
+
+# ─── 10. Lección 40 — prohibido email/teléfono/web del remitente en cuerpo ─
+
+
+@pytest.mark.parametrize("angle", ANGLES)
+def test_prompt_forbids_sender_contact_in_body(angle: str) -> None:
+    """Lección 40 (2026-05-25): los 3 prompts deben prohibir explícitamente
+    escribir email/teléfono/web del remitente en el cuerpo. La firma se
+    añade automáticamente en send_gmail._FOOTER."""
+    _, system, _ = _load(angle)
+    text_lower = system.lower()
+    assert "prohibido" in text_lower
+    # Mención explícita del email del remitente / firma automática
+    assert "@demingroupmadrid.com" in system or "email del remitente" in text_lower
+    assert "firma" in text_lower
+    # Frases de cortesía sugeridas como alternativa
+    assert "quedo a vuestra disposición" in text_lower or "podéis escribirme" in text_lower
+
+
+# ─── 11. Lección 39 — cabeceras de cadencia D+14/D+28 ──────────────────────
+
+
+def test_reframe_mentions_d14_in_system() -> None:
+    """Lección 39: el reframe v2 envía a los 14 días (no 4 como v1).
+    El system debe reflejar 'Hace 14 días' o equivalente."""
+    _, system, _ = _load("reframe")
+    assert "14 días" in system or "14 dias" in system or "+14" in system
+
+
+def test_closing_mentions_d28_in_system() -> None:
+    """Lección 39: el closing v2 envía a los 28 días (no 10 como v1)."""
+    _, system, _ = _load("closing")
+    assert "28 días" in system or "28 dias" in system or "+28" in system

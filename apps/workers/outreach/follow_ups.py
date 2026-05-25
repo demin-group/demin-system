@@ -1,11 +1,16 @@
 """follow_ups.py -- Sprint 4 paso 7. Programa step+1 cuando step previo
 fue enviado hace suficientes dias y no hay reply.
 
-Lee la sequence 'demin_v1' (D+0/D+4/D+10) seedada en migration 11. Para
-cada step_index 1 (reframe, D+4) y 2 (closing, D+10):
+Lee la sequence 'demin_v1' (D+0/D+14/D+28 desde migration 13 -- antes era
+D+0/D+4/D+10, recalibrado en sesion 2026-05-25 tras Leccion 39: PM
+detecto que el ritmo D+4 era demasiado agresivo para B2B y reescribio
+a D+14/D+28 mas natural). Para cada step_index 1 (reframe, D+14) y 2
+(closing, D+28):
 
 1. Busca messages con step_index = N-1 + status='sent' + sent_at <= now()
-   - days_required (4 dias para step 1, 6 dias para step 2 desde el step 1).
+   - days_required (14 dias para step 1 desde el step 0; 14 dias entre
+   step 1 y step 2). El worker calcula el delta leyendo `sequences.steps`
+   en runtime; cambiar la cadencia es UPDATE en BD, no code change.
 2. Filtra contacts que NO tienen reply (sequence detiene en cualquier reply).
 3. Filtra contacts que NO tienen ya message para (contact, step_index=N)
    (idempotencia tras re-correr).

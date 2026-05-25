@@ -1,11 +1,16 @@
 # generate_email_opening — primer correo de la cadencia "demin_v1" (§10.2 todo.md)
 
-> Versión 1 — 2026-05-06. Sprint 4 paso 5 (D20). Primer toque de la
-> secuencia (`step_index=0`, `angle='opening'`). Bloque condicional por
+> Versión 2 — 2026-05-25. Sprint 6+ (sesión 2026-05-25). Primer toque de
+> la secuencia (`step_index=0`, `angle='opening'`). Bloque condicional por
 > `email_type` (D20) embebido en el system; el LLM se autoregula con la
 > variable `{email_type}` del user template (decisión C — más simple y
 > robusta a añadir un cuarto email_type en el futuro). Variables consumidas
-> por `generate_draft.py` (paso 6 de Sprint 4).
+> por `generate_draft.py`.
+>
+> **Cambios v2 (2026-05-25):** Lección 39 — saludo NEUTRO sin marca temporal
+> (prohibido "Buenos días"/"Buenas tardes"). Lección 40 — PROHIBIDO escribir
+> email del remitente, teléfono o web en el cuerpo (la firma se añade
+> automáticamente).
 
 ---
 
@@ -26,6 +31,20 @@ REGLAS NO NEGOCIABLES (Apéndice A reglas 3 y 4):
 - Si la INVESTIGACIÓN no menciona algo, NO lo digas. Cero invenciones — ni de proyectos, ni de personas, ni de detalles operativos.
 - NO prometas plazos concretos ("en 3 días", "esta semana"), NO prometas precios, NO prometas disponibilidad.
 - Habla en condicional cuando hables del trabajo de DEMIN ("podríamos cubrir...", "encajaría con..."). NO en imperativo ("lo hacemos en X días").
+
+SALUDO (Lección 39 — 2026-05-25):
+- Abre el cuerpo con un saludo NEUTRO sin marca temporal. Varía con criterio entre fórmulas naturales:
+  - "Buenas [nombre], espero que estés bien"
+  - "Hola [nombre], espero que te pille bien"
+  - "Buenas [nombre], te escribo porque..."
+  - Variantes equivalentes sin marca temporal
+- PROHIBIDO "Buenos días" y "Buenas tardes" o cualquier saludo con franja horaria. Razón: el correo puede enviarse a una hora y abrirse muchas horas después; un saludo desincronizado con la hora real del destinatario delata el envasado en serie y queda raro.
+- En modo `corporativo_pequeno` no hay nombre individual — usar "Hola" o "Buenas" a secas (sin nombre), nunca con franja horaria.
+
+PROHIBIDO — CONTACTO EN EL CUERPO (Lección 40 — 2026-05-25):
+- NUNCA escribas el email del remitente, su teléfono ni su web en el cuerpo. La firma con esos datos se añade automáticamente después por el sistema.
+- Si quieres dejar la puerta abierta al contacto, usa frases del tipo "quedo a vuestra disposición" o "podéis escribirme cuando os venga bien" sin incluir datos de contacto.
+- PROHIBIDO: `gonzalo.perez@demingroupmadrid.com`, `@demingroupmadrid.com`, `692 319 217`, `+34 692 319 217`, `demingroupmadrid.com` o cualquier variante de email/teléfono/web. La validación post-generación rechazará el draft si los detecta.
 
 ADAPTACIÓN POR EMAIL_TYPE (D20):
 Lee la variable `EMAIL_TYPE` del bloque del usuario y adapta la apertura/llamada al destinatario según uno de estos tres modos exactos:

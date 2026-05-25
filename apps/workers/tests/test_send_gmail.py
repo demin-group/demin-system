@@ -128,19 +128,23 @@ def test_footer_perez_uses_utf8_e_acute() -> None:
 
 
 def test_footer_contains_standard_closing() -> None:
-    """D26 (2026-05-13): cierre estandar antes del separador de firma --
-    PM pidio 2 lineas: 'Quedo atento a vuestra respuesta,' + 'Un abrazo,'
-    cada una en su parrafo con linea en blanco entre ambas y antes del
-    separador. Mantiene el body LLM intacto (CTA-pregunta del paso 5
-    sigue al final del body sin colision con el cierre)."""
+    """D26 (2026-05-13) + L39 (2026-05-25): cierre estandar antes del
+    separador de firma -- 2 lineas: 'Quedo atento a vuestra respuesta,'
+    + 'Un saludo,' (era 'Un abrazo,' hasta L39; PM ajusto a 'Un saludo,'
+    tras review de los 12 primeros envios productivos), cada una en su
+    parrafo con linea en blanco entre ambas y antes del separador.
+    Mantiene el body LLM intacto."""
     assert "Quedo atento a vuestra respuesta," in _FOOTER
-    assert "Un abrazo," in _FOOTER
+    assert "Un saludo," in _FOOTER
+    # Regresion guard: "Un abrazo," era el cierre previo (D26 -> L39).
+    # No debe reaparecer sin revisar la decision documentada.
+    assert "Un abrazo," not in _FOOTER
     # Orden y espaciado: las dos lineas de cierre van separadas por linea
     # en blanco entre ellas, y otra antes del separador RFC 3676.
     closing_block = (
         "\nQuedo atento a vuestra respuesta,\n"
         "\n"
-        "Un abrazo,\n"
+        "Un saludo,\n"
         "\n"
         "-- \n"
     )

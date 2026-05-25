@@ -146,7 +146,7 @@ Métricas operativas que sí trackeamos para diagnosticar (no como objetivo): bo
 | LLM | Anthropic Claude Sonnet 4.5 (clasificación + redacción + extracción) | Calidad alta y precio razonable |
 | Embeddings | Voyage AI `voyage-multilingual-2` (1024 dim) | Decidido en Bloque A. Multilingüe (ES nativo) y casa con `vector(1024)` del schema §6.2 |
 | Email envío | Gmail API + dominio propio + Workspace | Custom según D3 |
-| Email warmup | Lemwarm Essential 29€/mes standalone (1 buzón) | Descartados Warmup Inbox y Smartlead por bloqueo de App Passwords / OAuth no verificado en Workspace |
+| Email warmup | ~~Lemwarm Essential 29€/mes standalone (1 buzón)~~ — **cancelado 2026-05-25 tras validación reputación** (score 97/100, Lección 38). El propio outreach productivo sostiene la deliverability desde aquí. | Descartados Warmup Inbox y Smartlead por bloqueo de App Passwords / OAuth no verificado en Workspace |
 | Scraping | Python `httpx` + `selectolax` + `tldextract` | Más rápido que requests+BS4 |
 | Browser-needed scraping | `playwright` (cuando JS bloquee httpx) | Solo si fallback |
 | Email finder primario (T2/T3 con web) | **Hunter.io Domain Search API** | Único adapter viable tras descarte Apollo (people endpoints gated Free) y Skrapp (API gated Enterprise) — Lección 21 aplicada 4× incl. RocketReach. Validado AMARILLO al 8% decisor estricto, **80% en T3 con criterio D20** (commits 3c5b7a9 + 36d5077). Free tier 25 búsquedas/mes basta para T3+T2 del primer batch (~115 leads accionables); plan Starter solo si se escala más allá. |
@@ -678,22 +678,26 @@ Marca `email_verified = true/false`.
 
 ### 9.2 Cadencia (la secuencia "demin_v1")
 
-3 toques por contacto con ángulos distintos:
+3 toques por contacto con ángulos distintos. **Cadencia D+0/D+14/D+28 desde sesión 2026-05-25** (Lección 39 — recalibrada desde D+0/D+4/D+10 original tras 12 envíos productivos que mostraron D+4 demasiado agresivo para B2B).
 
 | Step | Día | Ángulo | Objetivo del correo |
 |---|---|---|---|
-| 0 | D+0 | `opening` | Conexión genuina con lo que hace la empresa + propuesta de valor (la fase cero de sus reformas) |
-| 1 | D+4 | `reframe` | Re-encuadre. Caso de uso, escenario concreto que les puede resonar, o pregunta abierta. Diferente al toque anterior. |
-| 2 | D+10 | `closing` | Directo y breve. "Si no es momento, ¿quién en vuestro equipo coordina demoliciones?". Honesto, sin presión. |
+| 0 | D+0 | `opening` | Conexión genuina con lo que hace la empresa + propuesta de valor (la fase cero de sus reformas). **Saludo neutro sin marca temporal** (Lección 39 — prohibido "Buenos días"/"Buenas tardes"). |
+| 1 | D+14 | `reframe` | Re-encuadre. Caso de uso, escenario concreto que les puede resonar, o pregunta abierta. Diferente al toque anterior. Sin saludo de apertura (continúa hilo). |
+| 2 | D+28 | `closing` | Honesto y breve. **Pregunta ABIERTA** sin binario forzado (Lección 42 — prohibido "¿lo descartamos definitivamente?" y patrones pasivo-agresivos equivalentes). Asunto neutro tipo "Por si os encaja más adelante", NO "Último correo". |
+
+Cambio implementado en migración `20260525120000_13_seq_demin_v1_cadence_d14_d28.sql` (UPDATE `sequences.steps` + COMMENT + recálculo defensivo de `messages.status='scheduled'` si existieran).
 
 Si no hay respuesta tras el step 2: marcar como `cold` y programar re-engage a +90 días con ángulo `re_engage_90`.
 
 Si en cualquier step el lead responde: detener la secuencia inmediatamente.
 
+**Prohibido en TODOS los ángulos (Lección 40):** el email del remitente, su teléfono o su web nunca van en el cuerpo del LLM. La firma (`send_gmail._FOOTER`) los añade automáticamente. Si el LLM filtra cualquiera de los tres, `generate_draft.validate_post_generation` rechaza con `has_sender_leak` y regenera (máx 2 retries).
+
 ### 9.3 Reglas anti-spam
 
 - Texto plano. **No HTML, no pixel de tracking, no imágenes embebidas.** Los antispam modernos los penalizan duro.
-- Firma simple: nombre, rol, web, teléfono. Sin imágenes. Composición fijada en `send_gmail._FOOTER` (D24 paso 7 + ajuste D26 paso 7 post-B5 smoke 1): cierre estándar "Quedo atento a vuestra respuesta," + "Un abrazo," (cada línea en su párrafo, separadas por línea en blanco) **antes** del separador RFC 3676 `-- `, seguido de la firma "Gonzalo Pérez / Responsable DEMIN Group / demingroupmadrid.com / +34 692 319 217". Tilde en "Pérez" alineada con `mailboxes.display_name` (header `From:`). Teléfono verificado contra `docs/dossier_demin.pdf` + `docs/onboarding_demin.pdf`. UTF-8 preservado vía `MIMEText(_charset='utf-8')` en `gmail_adapter._build_raw_message`. Tests de regresión en `tests/test_send_gmail.py`: `test_footer_contains_standard_closing` (cierre), `test_footer_perez_uses_utf8_e_acute` (tilde), `test_footer_contains_sender_identity` (firma + guard sin tilde).
+- Firma simple: nombre, rol, web, teléfono. Sin imágenes. Composición fijada en `send_gmail._FOOTER` (D24 paso 7 + ajuste D26 paso 7 post-B5 smoke 1 + ajuste Lección 39 sesión 2026-05-25): cierre estándar "Quedo atento a vuestra respuesta," + **"Un saludo,"** (era "Un abrazo," hasta L39 — PM lo cambió tras review de los 12 primeros envíos productivos; cada línea en su párrafo, separadas por línea en blanco) **antes** del separador RFC 3676 `-- `, seguido de la firma "Gonzalo Pérez / Responsable DEMIN Group / demingroupmadrid.com / +34 692 319 217". Tilde en "Pérez" alineada con `mailboxes.display_name` (header `From:`). Teléfono verificado contra `docs/dossier_demin.pdf` + `docs/onboarding_demin.pdf`. UTF-8 preservado vía `MIMEText(_charset='utf-8')` en `gmail_adapter._build_raw_message`. Tests de regresión en `tests/test_send_gmail.py`: `test_footer_contains_standard_closing` (cierre + regresión guard de "Un abrazo,"), `test_footer_perez_uses_utf8_e_acute` (tilde), `test_footer_contains_sender_identity` (firma + guard sin tilde).
 - Sin enlaces de tracking. Si necesitamos saber si han abierto, lo dejamos para v2.
 - **~~Cada correo lleva pie con opt-out claro: "Si no quieres recibir más mensajes, responde STOP o díselo y dejaremos de escribirte."~~** **DEROGADO 2026-05-12 D24** (paso 7 pre-B5). Decisión PM: retirar la línea de opt-out del footer. Justificación PM (literal): "asumo el riesgo legal" + razón operativa "la estética no compensa el riesgo de deliverability con dominio aún relativamente nuevo". NO hay asesoría legal documentada. Riesgo LSSI/RGPD/AEPD aceptado conscientemente. Mecanismo alternativo de cese: el sistema de clasificación de respuestas §11 sigue detectando opt-out explícito por keywords ("no me escribáis más", "stop", "RGPD", "AEPD", "denuncia") en cualquier reply y fuerza exclusión permanente (Lección 1) — el opt-out no desaparece del sistema, solo de la línea de pie. Lección 32 captura el meta-patrón de derogar la regla operacional. Apéndice A regla 1 sigue vigente (HITL pre-envío + validaciones §10.3) y NO cubre opt-out en footer — la regla 1 cubre approval queue, no el contenido del cuerpo del email.
 - Variabilidad de envíos: no enviar a horas idénticas (jitter de ±30 min). No enviar fines de semana.
@@ -791,8 +795,30 @@ Antes de pasar a `status='drafted'`:
 - No contiene nombres inventados (verificar contra `research_data`)
 - No promete plazos ni precios (regex de "garantizamos", "en X días", "por X€")
 - No usa emojis ni signos de exclamación
+- **(Lección 40, sesión 2026-05-25)** No contiene email del remitente (`@demingroupmadrid.com`, `gonzalo.perez@`), teléfono (`692 319 217`, `+34 692 319 217`) ni web suelta (`demingroupmadrid.com`, `demingroup.es`) en body ni subject. La firma se añade en `send_gmail._FOOTER`. Implementación: `_SENDER_LEAK_RE` en `apps/workers/pipeline/generate_draft.py`. Devuelve `has_sender_leak` al fallar.
 
-Si falla validación: regenerar (máximo 2 reintentos, luego marcar para revisión humana).
+Si falla validación: regenerar (máximo 2 reintentos, luego marcar para revisión humana con `_failed_validations` en `research_snapshot`).
+
+### 10.4 Condiciones para activar modo autónomo
+
+> **Sesión 2026-05-25 (Lección 41).** El switch HITL → autónomo NO se hace por presión de calendario ni por "ya está construido". Se hace cuando el sistema cumple las **5 condiciones** simultáneas de abajo. Saltarse alguna mete el sistema en un escenario de "machaque del mismo pool pequeño" que quema la deliverability del dominio en semanas (caso real diagnosticado: Jaime de Lena recibió 2 toques en 5 días sobre un pool minúsculo que estaba haciendo replenish sobre los mismos contactos).
+
+**Las 5 condiciones (todas deben cumplirse antes de poner `mailboxes.hitl_mode='off'`):**
+
+1. **Pool ≥100 contactos vírgenes elegibles.** Un "virgen elegible" es un `contact.is_primary=true`, `contact.is_optout=false`, con `companies.ia_fit='fit'`, `companies.research_done_at IS NOT NULL`, sin `_failed` en research, y SIN ningún message previo en cualquier status (`drafted`/`approved`/`scheduled`/`sent`/`bounced`/`failed`/`cancelled`). Verificación: `apps/workers/scripts/audit_pool_contacts.py --env prod --threshold 100`. Si <100, ampliar a más tiers (T1, T2, T4) antes de activar.
+2. **Bounce rate <2% y spam complaints <0.1%** sostenidos en los últimos 7 días con muestra ≥50 envíos (mismo threshold que `auto_pause.py`).
+3. **Reply rate medible** (cualquier valor — solo necesitamos saber que el clasificador está procesando respuestas reales, no que la cola está vacía por silencio total).
+4. **Cap diario rampado al menos a 25-30/día** sin pausas automáticas en los últimos 5 días laborables (señal de que los caps actuales son sostenibles).
+5. **Postmaster Tools del dominio en verde** (sin warnings de reputation domain o IP en los últimos 7 días).
+
+**Mecanismo del switch:**
+- Toggle en `/settings` del dashboard escribe `mailboxes.hitl_mode='off'`.
+- Worker `auto_approve.py` (Sprint 6) lee el toggle y aprueba automáticamente los drafts que pasen las validaciones §10.3 (incluido `has_sender_leak`).
+- Cualquier draft con `_failed_validations` o señal anómala sigue yendo a `/approval-queue` para HITL manual (regla Apéndice A nº 1 cubierta vía esa salida HITL).
+
+**Reversión:** poner `mailboxes.hitl_mode='hitl'` vuelve a HITL inmediato (todos los drafts requieren aprobación humana). Cero downtime.
+
+**Cross-ref §17 (Settings dashboard):** el toggle HITL/autónomo se gestiona desde `/settings`; las 5 condiciones se evalúan visualmente antes de tocar el toggle (futuro: dashboard puede surface las 5 condiciones como semáforo, pero hoy se verifican con el script `audit_pool_contacts.py` + Postmaster Tools + métricas `/metrics`).
 
 ---
 
@@ -1199,7 +1225,7 @@ Definidos al final de cada fase (§14).
 |---|---|
 | Dominio (`demingroupmadrid.com`) | ~1€/mes (~12€/año) |
 | Google Workspace (1-2 buzones)        | 6-12€ (1 buzón ahora; +1 desde día 14)   |
-| Lemwarm Essential (1-2 seats)         | 29-58€ (idem; cada seat son 29€/mes)      |
+| ~~Lemwarm Essential (1-2 seats)~~     | ~~29-58€~~ → **0€ desde 2026-05-25** (cancelado tras 1 mes warmup, score 97/100, 802 emails, 0 blacklists — Lección 38). Reactivar solo si Postmaster degrada. |
 | Email finder — evaluación adapters (cerrada) | **0€** (Hunter probado AMARILLO/T3-verde, Apollo y Skrapp descartados sin gasto — Frentes C/D/E 2026-05-06) |
 | Email finder — adapter primario Hunter (D21) | **30-45€/mes** (Starter, 500 búsquedas/mes) activado en paso 7 (2026-05-12). Free 50/mes no aguantaba el cap 20/día sostenido. PM autorizó el upgrade explícitamente. Régimen Sprint 4 productivo. |
 | Email finder — régimen mantenimiento  | 0€ esperable (free tier de Hunter cubre reposiciones puntuales tras procesar el universo SABI accionable) |
@@ -1209,6 +1235,7 @@ Definidos al final de cada fase (§14).
 | Vercel | 0€ (free tier) |
 | Supabase | 0€ (free tier) |
 | **Total recurrente paso 7 en adelante (Sprint 4 productivo)** | **~105-140€/mes** (Hunter Starter activado). Dentro de techo D15 (150€/mes) con margen ajustado. |
+| **Total recurrente tras cancelación Lemwarm (2026-05-25)** | **~76-111€/mes** (Hunter Starter + Anthropic + Voyage + Workspace + Hetzner + dominio). −29€/mes vs línea anterior. Margen amplio dentro de techo D15. Ver §19 entrada del 2026-05-25 + Lección 38. |
 
 **Coste actual evaluación adapters: 0€** (Hunter, Apollo y Skrapp probados/descartados sin gasto). Hunter es adapter primario con free tier (D21) — 25 búsquedas/mes basta para T3+T2 del primer batch; plan Starter solo si se escala más allá. Régimen estable Sprint 4 ~75-95€/mes con free tier de Hunter para reposiciones. Sigue dentro del techo D15 (150€/mes) con margen.
 
@@ -2158,6 +2185,56 @@ PM autorizó continuar autonomo tras cierre Sprint 5. Sprint 6 entero construido
 - Lecciones capturadas: 2 nuevas (36 + 37 = total 37).
 
 **Sprint 6 = ÚLTIMO entregable de la sesión.** PM termina aquí. Sistema corre autónomo en VPS desde ahora. PM revisa diariamente `/metrics` durante semana piloto.
+
+---
+
+### 2026-05-25 — Decisión PM: cancelación de Lemwarm tras 1 mes de warmup validado
+
+Score Lemwarm `gonzalo.perez@demingroupmadrid.com`: **97/100**, **802 emails calentando acumulados**, **0 blacklists**, **~1 mes de warmup continuo**, mensaje del proveedor *"You can start your campaigns"*. PM decide cancelar la suscripción Lemwarm Essential (29€/mes) en panel `lemlist.com`. Ahorro recurrente: **~29€/mes**. Total recurrente del sistema baja de ~105-140€/mes a ~76-111€/mes (margen amplio bajo techo D15 de 150€/mes).
+
+**Razón:** el warmup externalizado cumplió su función como puente entre dominio nuevo y primer batch productivo (paso 7, cap 20/día, Lección 30). Con envío productivo regular en curso (12 sent entre 2026-05-14 y 2026-05-19), el propio outreach genera tráfico human-like que mantiene la reputación. Lemwarm activo en paralelo era redundante.
+
+**Trigger de reactivación documentado:** si Postmaster Tools muestra warning amarillo/rojo o bounce rate >2% sostenido, reactivar Lemwarm (29€ del primer mes + 2-3 semanas para volver a score >90). También antes de cualquier pausa de outreach >2 semanas (holiday, etc.) — la reputación caduca con la inactividad (Lección 27).
+
+**Aplicado en:** §17 tabla costes actualizada con tachado + nueva fila Total tras cancelación. §4 Stack técnico tabla "Email warmup" con tachado + nota inline. `tasks/lessons.md` Lección 38 nueva.
+
+**No requiere cambio en código ni en BD** — Lemwarm es servicio externo que se cancela vía panel del proveedor. La columna `mailboxes.warmup_status` se mantiene como `ready` (estado actual válido tras score 97).
+
+---
+
+### 2026-05-25 — Ajustes de producto tras review de los 12 primeros envíos productivos (L39–L42)
+
+Tras observar los primeros 12 envíos productivos del 14–19 de mayo, PM identificó **5 ajustes de producto** que cierran problemas detectados antes de cualquier escalado a modo autónomo. Sesión 2026-05-25 (un único commit) ejecuta los ajustes y captura el aprendizaje en cuatro lecciones nuevas (L39–L42, ver `tasks/lessons.md`).
+
+**Cambios aplicados (resumen ejecutivo):**
+
+1. **Saludo neutro en `opening`** (L39). Prohibido "Buenos días"/"Buenas tardes" (saludos con marca temporal) — el correo se abre horas después de enviarse y la franja horaria queda desincronizada. Variantes permitidas: "Buenas [nombre], espero que estés bien", "Hola [nombre], espero que te pille bien", "Buenas [nombre], te escribo porque...". Aplicado en `apps/workers/shared/prompts/generate_email_opening.md` v2 + tests `test_opening_forbids_temporal_greeting` y `test_opening_mentions_neutral_greeting_variants`.
+
+2. **Footer cierra con "Un saludo," (era "Un abrazo,")** (L39). Aplicado en `apps/workers/outreach/send_gmail.py` `_FOOTER` + test `test_footer_contains_standard_closing` actualizado con regresión guard contra "Un abrazo,". §9.3 actualizada.
+
+3. **Cadencia D+0/D+14/D+28 (era D+0/D+4/D+10)** (L39 + diagnóstico L41). PM detectó que Jaime de Lena (LENA CONSTRUCCIONES) recibió el opening el 14-may y el reframe el 19-may — D+5 real, demasiado agresivo. La causa: migration 11 seedeaba `sequences.steps` con D+0/D+4/D+10 (§9.2 original), no D+0/D+12/D+30 (Lección 4 anterior). Solución: nueva migración `20260525120000_13_seq_demin_v1_cadence_d14_d28.sql` reescribe `sequences.steps` a D+0/D+14/D+28 + recálculo defensivo de `messages.status='scheduled'` si existieran. `follow_ups.py` lee la cadencia en runtime → cero redeploy de workers. Prompts `generate_email_reframe.md` v2 ("Hace 14 días") y `generate_email_closing.md` v2 ("Han pasado 28 días"). Tests `test_reframe_mentions_d14_in_system` y `test_closing_mentions_d28_in_system`. §9.2 actualizada.
+
+4. **Email/teléfono/web del remitente PROHIBIDO en el cuerpo del LLM** (L40). Origen: draft step 2 closing para Jaime de Lena traía `gonzalo@demingroup.es` (dominio incorrecto — el correcto es `gonzalo.perez@demingroupmadrid.com`). Independientemente de si fue alucinación o reminiscencia, el patrón de meter contacto en el cuerpo es una clase de bug evitable. Aplicado: (a) bloque "PROHIBIDO — CONTACTO EN EL CUERPO" en los 3 prompts opening/reframe/closing v2, (b) regex `_SENDER_LEAK_RE` en `apps/workers/pipeline/generate_draft.py` que detecta `@demingroupmadrid.com`, `gonzalo.perez@`, `+34 692 319 217`, `692 319 217`, `demingroupmadrid.com`, `demingroup.es` y devuelve `has_sender_leak` en `validate_post_generation`, (c) tests parametrizados con 13 variantes positivas (incluido el caso real) + 2 negativas en `test_generate_draft.py`, (d) test `test_prompt_forbids_sender_contact_in_body` parametrizado sobre los 3 prompts. §10.3 actualizada con regla nueva.
+
+5. **Respuestas tibias = `no_ahora`, NO `interesado`** (L39). Aplicado en `apps/workers/shared/prompts/classify_reply.md` v2: `interesado` requiere compromiso CONCRETO con fecha/hora ("hueco el jueves", "mándame presupuesto para X obra"); `no_ahora` amplía sus ejemplos con "me guardo tus datos", "lo tendré en cuenta", "ya te diré", "interesante, hablamos cuando haga falta". Disparan re_engage +60d. Criterio de éxito real del seguimiento documentado: solo cuenta `interesado` cuando hay compromiso de fecha/hora de llamada o reunión.
+
+6. **Closing sin pasivo-agresivo / sin ultimátum** (L42). El draft step 2 para Jaime de Lena cerraba con "¿es algo que podría tener sentido más adelante o lo descartamos definitivamente?" y asunto "Último correo de mi parte". PM identificó esa formulación como pasivo-agresiva (fuerza al "no" para quitarse el correo de encima) y contradictoria con el valor n.º 5 de DEMIN ("trato cercano y flexible"). v1 del prompt lo consideraba "estructural para alimentar el clasificador §11"; tras discusión, la señal estructural se mueve del prompt al downstream (silencio post-closing = `no_ahora` por defecto, Lección 1). v2 del closing: invitación abierta sin binario forzado. Asunto PROHIBIDO "Último correo", "Última oportunidad", "Me rindo". Cuerpo PROHIBIDO preguntas binarias forzando "no" y conteos de correos previos en tono de queja. Aplicado en `generate_email_closing.md` v2 + tests reemplazados: `test_closing_forces_yes_no_categorization` → `test_closing_invites_without_forced_dichotomy` + `test_closing_forbids_aggressive_subject`.
+
+**Cambios infraestructurales aplicados (no son ajustes de producto, pero quedan en la sesión):**
+
+7. **Nuevo script de auditoría del pool: `apps/workers/scripts/audit_pool_contacts.py`** (L41). Breakdown por tier de contactos vírgenes elegibles + cross-check con `auto_replenish.count_contacts_without_draft` (verifica que ambos filtros devuelven el mismo número — drift = bug) + conteo de `messages` por status + veredicto contra `--threshold 100`. Exit code 1 si pool total <100. Justificación: PM observó 12 envíos en 5 días sobre lo que parece un pool minúsculo (Jaime tiene 2 toques y un 3º en cola); auditar antes de activar autónomo evita el escenario "machaque del mismo subset".
+
+8. **§10.4 nueva: "Condiciones para activar modo autónomo"** (L41). Cinco condiciones que deben cumplirse antes de tocar `mailboxes.hitl_mode='off'`: (1) pool ≥100 vírgenes elegibles, (2) bounce <2% / spam <0.1% en 7d con sample ≥50, (3) reply rate medible, (4) cap rampado a 25-30/día sin pausas en últimos 5 días laborables, (5) Postmaster Tools en verde 7d. Cross-ref desde §17 (toggle HITL en `/settings`).
+
+**Auditoría del replenish (cierre de duda diagnóstica):** PM sospechaba que `auto_replenish` machacaba contactos con mensajes previos. Verificado en `apps/workers/pipeline/auto_replenish.py:113-116`: `count_contacts_without_draft` filtra con `NOT EXISTS (select 1 from messages m where m.contact_id = c.id)`. Funcionalmente correcto — excluye CUALQUIER contact con CUALQUIER message previo. Idéntico filtro en `generate_draft.fetch_pending_contacts` y `follow_ups.fetch_followup_candidates`. NO es un bug. El "machaque" observado era simplemente la cadencia D+4 aplicada sobre un pool pequeño, no replenish reescribiendo contactos. La nueva cadencia D+14/D+28 + script de auditoría + §10.4 cierran el problema en origen.
+
+**Ejecución pendiente (operaciones del PM, no de Code):**
+
+- [ ] Aplicar migración 13 en `demin-dev` (`uv run python -m scripts.apply_migrations --env dev`) y `demin-prod`.
+- [ ] Ejecutar `audit_pool_contacts.py --env prod --threshold 100` y registrar el resultado en el siguiente check-in de §19.
+- [ ] Si pool prod <100: decidir si lanzar `research_prospect.py` sobre fits sin research o `find_contacts.py` sobre research-done sin primary, o ampliar a T2/T1/T4 con la arquitectura D21.
+
+**Lecciones capturadas:** 4 nuevas (L39 + L40 + L41 + L42 = total 42).
 
 ---
 

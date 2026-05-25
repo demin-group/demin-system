@@ -158,6 +158,71 @@ def test_validate_returns_multiple_failures_when_multiple_rules_fail() -> None:
     assert "has_emoji" in failures
 
 
+# ─── 1b. has_sender_leak (Lección 40, 2026-05-25) ──────────────────────────
+# El LLM no debe meter email/teléfono/web del remitente en el cuerpo —
+# la firma se añade en send_gmail._FOOTER. Si filtra, hay riesgo de
+# dominio incorrecto (alucinación) o duplicación con la firma.
+
+
+@pytest.mark.parametrize(
+    "leak",
+    [
+        # Email correcto (no debería estar en el cuerpo, la firma lo añade)
+        "gonzalo.perez@demingroupmadrid.com",
+        "gonzalo.perez@demingroupmadrid.com,",
+        "gonzalo @demingroupmadrid.com",
+        # Dominio incorrecto (alucinación del LLM — caso real LENA 2026-05-25)
+        "gonzalo@demingroup.es",
+        # Email genérico al dominio
+        "contacto@demingroupmadrid.com",
+        "info@demingroupmadrid.com",
+        # Teléfono con prefijo
+        "+34 692 319 217",
+        "+34692319217",
+        "+34-692-319-217",
+        # Teléfono sin prefijo
+        "692 319 217",
+        "692.319.217",
+        # Web suelta
+        "demingroupmadrid.com",
+        # Dominio antiguo (nunca debe usarse)
+        "demingroup.es",
+    ],
+)
+def test_validate_detects_sender_leak_in_body(leak: str) -> None:
+    body = _body_n(50) + " " + leak + " " + _body_n(50)
+    failures = validate_post_generation(_subject_n(5), body)
+    assert "has_sender_leak" in failures, f"no pilló sender leak: {leak!r}"
+
+
+def test_validate_detects_sender_leak_in_subject() -> None:
+    failures = validate_post_generation("Hola desde demingroupmadrid.com", _body_n(120))
+    assert "has_sender_leak" in failures
+
+
+def test_validate_accepts_body_without_contact_info() -> None:
+    """Frases tipo 'quedo a vuestra disposición' deben pasar sin disparar
+    has_sender_leak. La firma con email/teléfono/web se añade aparte."""
+    body = (
+        "Hola Juan, te escribo porque coordináis obras residenciales en Madrid. "
+        "DEMIN cubre la fase cero de demolición interior. "
+        "Si encajara con algún proyecto, quedo a vuestra disposición. "
+        "Podéis escribirme cuando os venga bien. "
+        "Un saludo."
+    )
+    # ~50 palabras, sin emails, sin teléfonos, sin web suelta
+    failures = validate_post_generation("Demolición fase cero proyecto", body)
+    assert "has_sender_leak" not in failures
+
+
+def test_validate_does_not_false_positive_on_unrelated_email() -> None:
+    """El regex solo dispara con el remitente de DEMIN, no con otros emails
+    mencionados (ej. email del propio destinatario o de un tercero)."""
+    body = _body_n(40) + " info@empresacliente.es " + _body_n(40)
+    failures = validate_post_generation(_subject_n(5), body)
+    assert "has_sender_leak" not in failures
+
+
 # ─── 2. kb_retrieval_query_for_company ─────────────────────────────────────
 
 
