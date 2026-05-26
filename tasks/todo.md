@@ -2338,6 +2338,102 @@ Per regla dura del prompt: si N=0 respuestas matched en Paso 1.4 (caso real al c
 
 ---
 
+### 2026-05-26 — Expansion pool intento + Opcion C descartada + auto_switch construido (L49+L50)
+
+Sesion larga (Code Opus 4.7 + PM via prompt detallado) para subir pool de 9 a ≥50 + construir infraestructura de switch automatico a autonomo con safeguards.
+
+**Fase 1 — Diagnostico:** revelo desajuste plan vs realidad. T1+T2 YA estaban researched (118+48 = 166, 0 sin research). Solo quedaba T4 con 288 fit sin web declarada. Plan original sobreestimaba el pool reachable.
+
+**Fase 2.2 — Hunter retry T1+T2:** 102 empresas sin contact (69 T1 + 33 T2). **0 contactos nuevos.** Hit rate 0% confirma L22 (cobertura Hunter saturada en sector construccion PYME ES). 102 Hunter calls quemadas. Pool sin cambio: 9 virgenes.
+
+**Fase 3 — Opcion C T4 (L49):** pipeline completo construido (4 sub-modulos + orquestador + doc + tests):
+- `pipeline/infer_domain.py`: slugify + DNS MX lookup. Bug critico detectado en smoke: variante "primera palabra" producia falsos positivos peligrosos (CONSTRUCTORA TEPEYAC -> constructora.es de OTRA empresa). Fix: removida variante + blacklist 11 dominios sectoriales genericos.
+- `pipeline/permute_emails.py`: whitelist 5 prefijos T4 + catch_all probe random.
+- `pipeline/smtp_probe.py`: MX RCPT TO sin DATA via smtplib stdlib + manejo 4xx/5xx + catch-all detection.
+- `pipeline/research_t4_nowebsite.py`: research IA Sonnet sin scraping (~$0.005-0.010 por empresa). Prompt v1 con enum sub_sector + Apendice A regla 3 cero invenciones.
+- `pipeline/option_c_t4.py`: orquestador E2E con cap defensivo + rate limit 3s + contadores.
+
+Resultados smoke 5 + batch real 30 (35 empresas):
+- 9/35 dominio inferido (25.7%).
+- **0/9 SMTP verificados** (0%).
+- 25 a `tier='descartado'`, 10 con `research_data._smtp_status='no_match'`.
+
+Conclusion L49: Opcion C heuristica + SMTP probe NO es viable PYME ES 2026. Providers bloquean RCPT TO o son catch-all. **PM autoriza parar el procesamiento de las 253 T4 restantes** (ahorra ~$1.50 LLM + 20 min por informacion que ya tenemos).
+
+Codigo commiteado igualmente como infra reusable (commits b12f250 fix + 7c94f8c pipeline) por si en futuro un sector permite SMTP. Lección 49 documenta el patron meta.
+
+**Fase 4 — Generar drafts pool actual:** 6 drafts nuevos (2 T1 + 4 T2, 100% validados). T3 1 virgen tenia `_failed` -> skipped. $0.12 LLM real.
+
+**Fase 5 — Switch automatico a autonomo (L50, commit 5012bf7):**
+
+- **Migration 16**: `mailboxes.auto_switch_enabled` (default true) + `mailboxes.scheduled_autonomous_switch_at` (null). Aplicada a prod.
+- **Worker** `monitoring/auto_switch_to_autonomous.py`: evalua 7 condiciones Bloque 6 cada 6h. Threshold pool **50** (L50, no 100). Threshold aprobaciones 50. Cond 7 Lemwarm hardcoded true (L38 deuda consciente). Programa switch +24h si 7/7 verdes Y auto_switch_enabled. Cancela si condicion se rompe. Ejecuta cuando llega la hora + condiciones siguen verdes.
+- **Helper `shared/notifications.py`**: Resend HTTP API via httpx, best-effort (L8 — sin RESEND_API_KEY → warning + skip sin abortar).
+- **UI `/settings`**: nueva Card "Auto-switch a autonomo (Bloque 6 — L50)" con toggle + scheduled state (amber box + cancel) + rollback emergency (boton rojo lg "🔙 Volver a HITL ahora") + tabla 7 condiciones evaluadas server-side con ✅/❌. Build dashboard turbopack /settings 5.56 kB sin errores.
+- **Server actions**: `toggleAutoSwitchEnabledAction`, `cancelScheduledSwitchAction`. Paper trail events.
+- **systemd**: `demin-auto-switch.service` + `.timer` cada 6h. **Pendiente despliegue VPS** (PM o proxima sesion: scp + daemon-reload + enable+start).
+
+Estado evaluacion 7 condiciones al cierre (worker dry-run): **3/7 verdes**.
+- ✅ Cond 1 migrations (14+15+16 aplicadas).
+- ❌ Cond 2 aprobaciones (42/50, falta 8).
+- ❌ Cond 3 B7 + replies (token OK, replies=0).
+- ✅ Cond 4 sin bounces (0 en 7d).
+- ❌ Cond 5 pool virgenes (3/50 ← post-Fase 4 baja porque drafts ocupan, pero antes era 9; reflexion: el threshold sigue lejisimos sin Palanca A LinkedIn).
+- ❌ Cond 6 replenish no reescribe (2 contacts con ≥3 msgs en 14d — historico Jaime + ?).
+- ✅ Cond 7 Lemwarm (hardcoded L38).
+
+Sin schedule programado (correcto — 4 condiciones rojas).
+
+**Coste sesion**: ~$0.12 LLM real (generate_draft) + ~$2 estimado research T4 batch 30 (modelo sin pricing en tabla) = **~$2.12 LLM**. Hunter: 102 calls. Cap $20 holgado.
+
+**Tareas humanas pendientes prioritarias actualizadas (post-sesion 2026-05-26 noche):**
+
+1. **PM**: desplegar systemd `demin-auto-switch.{service,timer}` al VPS Hetzner. Sin esto el worker no corre en background. PM o proxima sesion Code: `scp infra/systemd/demin-auto-switch.{service,timer} demin@178.105.143.239:/etc/systemd/system/ && ssh demin@... 'sudo systemctl daemon-reload && sudo systemctl enable --now demin-auto-switch.timer'`.
+2. **PM**: opcionalmente añadir `RESEND_API_KEY=re_xxx` al `.env.prod` del VPS para que el worker pueda mandar emails. Si no, el worker funciona pero salta envios con warning.
+3. **PM**: decidir Palanca A (LinkedIn/Phantombuster) o B (clasificar Sabi pendientes) cuando pool baje a 0. L49 cierra Opcion C heuristica como no viable. Detalles en §20.
+4. **PM**: heredadas — Voyage billing, Jaime cooling 25-jun, vigilar primera reply real.
+
+---
+
+## §20 — Palancas futuras de expansión del pool
+
+Esta lista la mantenemos para que cuando PM pregunte "¿qué más podemos hacer para subir el pool de contactos?", Claude (PM consultor) o Code puedan responder con opciones concretas. NO ejecutar ninguna sin decisión PM explícita.
+
+### Palanca A — LinkedIn outreach vía Phantombuster (Lección 25)
+
+- **Qué hace:** scraping automático de perfiles de LinkedIn de decisores en empresas del ICP. Devuelve nombre + cargo + URL de perfil + a veces email.
+- **Coste:** ~$60/mes Phantombuster Starter + posible coste de cuenta LinkedIn Sales Navigator si se quiere alcance ampliado (~$80/mes adicional).
+- **Ganancia esperada:** +100-300 contactos elegibles segmentados por ICP, dependiendo del nivel de Sales Navigator.
+- **Riesgo principal:** LinkedIn detecta scraping agresivo y banea cuentas. Phantombuster gestiona rate limit pero no es infalible. Mejor con cuenta nueva dedicada al outreach, no la personal de Gonzalo.
+- **Tiempo de implementación Code:** 1-2 sesiones (cuenta + integración API + pipeline de import a `contacts`).
+- **Cuándo accionar:** cuando pool baje de 30 vírgenes elegibles Y operación autónoma haya validado que el sistema enviar+recibir+clasificar+responder funciona con calidad aceptable.
+
+### Palanca B — Clasificar las 3.845 empresas "pendientes" de Sabi
+
+- **Qué hace:** correr `classify_descr.py` sobre las empresas de Sabi que están con `ia_fit='pendiente'` (no pasaron por el clasificador IA todavía).
+- **Coste:** ~$3-4 LLM (Haiku por categoría "classify").
+- **Ganancia esperada:** ~10% pasarán fit (≈380 empresas). De esas, las que tengan tier accionable y se procesen darán ~50-100 contactos adicionales (cobertura ~15-20% tras pipeline completo).
+- **Riesgo principal:** ninguno. Es trabajo de filtrado puro.
+- **Tiempo Code:** 30-60 minutos.
+- **Cuándo accionar:** cuando Hunter retry T1+T2 + Opción C T4 no hayan dado suficiente material. Es la siguiente palanca natural antes de LinkedIn.
+
+### Palanca C — Importar nuevo dump de Sabi con criterios distintos
+
+- **Qué hace:** pedir a Sabi un export nuevo ampliando CNAEs adyacentes (mantenimiento integral, gestiones de patrimonio, etc.) o ampliando provincias limitrofes (Toledo, Guadalajara, Ávila, Segovia).
+- **Coste:** acceso humano a Sabi (no es coste de software).
+- **Ganancia esperada:** depende del criterio. Conservador: +2.000-3.000 empresas en bruto, ~9% fit ≈ +180-270 nuevas fit, ~80-150 contactos tras pipeline.
+- **Riesgo principal:** ampliar geografía puede romper la propuesta de valor "somos de Madrid, llegamos rápido". Discutir con Gonzalo antes.
+- **Tiempo:** trabajo humano de extraer + nuevo ingest Code.
+- **Cuándo accionar:** si tras Phantombuster + clasificación pendientes aún se necesita más volumen.
+
+### Palanca D — Activar T4 con Opción C ⚠️ DESCARTADA EMPÍRICAMENTE (L49)
+
+- **Estado:** activada en sesión 2026-05-26 → **hit rate 0% sobre sample 35 empresas**. Providers SMTP en 2026 bloquean RCPT TO probing agresivo. No es viable in-house para PYME ES sin web.
+- **Código queda en repo** (`pipeline/option_c_t4.py` + sub-módulos) como infra reusable para sectores futuros donde SMTP sea más permisivo, pero no reintentar para este universo.
+- **Alternativa de validación email externalizada**: si en algún momento PM quiere validar candidatos email a escala, considerar MillionVerifier API (~$0.0008/probe) en lugar de SMTP probe in-house.
+
+---
+
 ## Apéndice A — Reglas no negociables (resumen para Claude Code)
 
 1. **Nunca** envíes un correo sin pasar por la cola de aprobación (en HITL). En autónomo, nunca sin pasar las validaciones de §10.3.

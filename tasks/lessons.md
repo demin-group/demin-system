@@ -1373,6 +1373,80 @@ RLS de Supabase protege contra acceso vía API pública pero NO contra ninguno d
 
 ---
 
+## 2026-05-26 — Lección 49: Opción C heurística (slug+TLD+MX+SMTP probe) NO es viable para PYME ES sin web
+
+**Contexto:** sesión 2026-05-26 implementó pipeline completo Opción C T4 (`pipeline/option_c_t4.py` + 4 sub-módulos) para procesar 288 empresas T4 fit sin web declarada — último gran bloque de pool sin tocar tras agotar Hunter retry T1+T2 en mismo día (0 contactos nuevos sobre 102 empresas, confirma L22). Smoke (5) + batch real (30) = 35 empresas procesadas con:
+
+- Dominio inferido: 9/35 (25.7%) tras quitar variante "primera palabra" que producía falsos positivos peligrosos (constructora.es matchea para múltiples empresas distintas).
+- SMTP probe verificado: **0/9 dominios** dieron 250 OK al RCPT TO.
+- Hit rate end-to-end: **0%**.
+
+Las empresas T4 sin web SÍ tienen dominio comercial activo (1/4 al menos), pero los providers (Gmail Workspace, Microsoft 365, GoDaddy) están bloqueando SMTP probing al RCPT TO en 2026. Patrón: aceptan EHLO/MAIL FROM, luego o cierran sin respuesta, o responden 5xx generic, o son catch-all (la detección está pero salta la mayoría a "no concluyente"). El probe pasivo sin DATA que en 2020-2022 daba ~50% hit rate hoy da ~0%.
+
+**Decisión PM:** parar el procesamiento de las 258 T4 restantes. Coste evitado: ~22 min + ~$1.50 LLM por información que ya tenemos (hit rate 0% statistically significativo). Las 25 empresas procesadas en el batch real quedaron como `tier='descartado'` con `research_data._descartado_reason='no_domain_inferred'` cuando no se infirió dominio, o con `research_data._smtp_status='no_match'` cuando había dominio pero SMTP no validó.
+
+**Regla resultante:**
+
+- **Antes de comprometer pipeline completo con SMTP probe agresivo en 2026**, hacer smoke de 10-30 sample SOLO de los pasos críticos (en este caso: solo SMTP probe sobre dominios conocidos válidos). Si hit rate sobre dominios reales y verificados es <5%, abortar pipeline antes de invertir tiempo en infer_domain + research IA. El cuello de botella suele ser el SMTP, no los pasos previos.
+- **Para sectores donde Hunter ya falla (cobertura saturada L22)**, NO existe una "opción C heurística + SMTP probe" viable en 2026. Los caminos reales para subir el pool son:
+  - Phantombuster LinkedIn (L25 — ~$60/mes, hit rate típico 60-80% en M&A según experiencia industrial).
+  - Servicios comerciales especializados con APIs de validación email (MillionVerifier ~$0.0008/probe, etc.) — externalizar la validación, no hacerla in-house.
+  - Empresite/Einforma scraping (L26 — mini-experimento pendiente, fuente complementaria pero requiere RGPD + TOS análisis).
+  - Nuevo dump SABI con CNAEs/geografías adyacentes (palanca C en §20).
+- **Documentar palancas activadas Y descartadas** con datos reales para que futuras sesiones no re-intenten el mismo error con la esperanza de que funcione "esta vez". Lección 49 cierra Opción C heurística in-house como vía descartada empíricamente para PYME construcción ES en 2026.
+
+**Aplicado en:**
+- Código `pipeline/option_c_t4.py` + 4 sub-módulos commiteados igualmente (curva de aprendizaje + dejan infra reusable si en futuro un sector distinto se procesa donde SMTP sea más permisivo).
+- 35 empresas T4 procesadas en BD prod: 25 a `tier='descartado'`, 10 con `research_data._smtp_status='no_match'` + dominio inferido + research IA.
+- Decisión documentada en §19 todo.md entrada 2026-05-26.
+- `tasks/todo.md` §20 nueva palancas A/B/C/D con esta como D (activada, fallida documentada).
+
+**Trigger inmediato:** cuando el pool actual (9 vírgenes hoy) baje a 0 sin más material disponible, PM evalúa Palancas A (LinkedIn) o B (clasificar pendientes Sabi) como next step. Lección 49 ahorra el tiempo de reintentar Opción C.
+
+---
+
+## 2026-05-26 — Lección 50: PM acepta switch automático a autónomo con threshold pool ≥50 + 4 safeguards
+
+**Contexto:** prompt /goal v4 del 25-may estipulaba Bloque 6 (switch a autónomo) con activación manual por PM cuando 7 condiciones se cumplieran. Sesión 2026-05-26 cambió a activación AUTOMÁTICA con safeguards. Cambio adicional: pool threshold de 100 → 50.
+
+**Decisión PM (Alberto, 2026-05-26):**
+
+- Threshold pool vírgenes elegibles: **≥50** (no ≥100 del prompt original).
+  - Justificación: 50 vírgenes + cadencia D+14/D+28 + cap 20/día = ~10 días de operación autónoma sin intervención. Suficiente para validar el modo antes de escalar.
+  - Threshold 100 queda como objetivo aspiracional para fase de escalado posterior (cuando Phantombuster + nuevos dumps Sabi sumen pool).
+- Switch a autónomo se activa **automáticamente** sin requerir confirmación manual PM, condicionado a las 7 condiciones del Bloque 6 (con L50 aplicada a Cond 5) Y a 4 safeguards obligatorios.
+
+**Los 4 safeguards (no opcionales):**
+
+1. **Email previo 24h** a `albertobueno10@gmail.com` Y `gonzalo.perez@demingroupmadrid.com` cuando el worker detecte 7/7 condiciones verdes y vaya a hacer switch. Asunto "[DEMIN] Switch a autonomo programado para [fecha+24h]". Cuerpo HTML con tabla de las 7 condiciones + link directo a `/settings` para cancelar.
+2. **Toggle `auto_switch_enabled` en `/settings`** (default ON, decisión PM). PM puede desactivar en cualquier momento desde dashboard. Si OFF: worker solo evalúa y notifica "cumplidas, activa manualmente" sin programar switch.
+3. **Cap inicial 20/día al activarse**. Sin escalado automático. PM decide subir cap manualmente con cuidado.
+4. **Botón rollback de emergencia "Volver a HITL ahora" en `/settings`**, visible, accesible desde móvil, con `variant="destructive"` y tamaño `lg`. Acción inmediata sin doble-confirm (es rollback, no flip nuevo — confianza en que si lo pulsas es porque algo está mal).
+
+**Por qué cambio de manual a automático con safeguards:**
+- Reduce dependencia de PM disponible para flipar switch cuando llegue el momento.
+- Email 24h da ventana para cancelar si PM/Gonzalo detectan algo raro (toggle off, cancel schedule, o ignorar el email tras revisar /settings).
+- Worker corre cada 6h → 4 disparos por día → si una condición se rompe entre el schedule y la ejecución, el worker la cancela y notifica.
+- El toggle `auto_switch_enabled` es el opt-out per-mailbox: si PM no se siente cómodo lo apaga y vuelve al flujo manual del prompt v4 sin perder ninguna garantía.
+
+**Por qué hardcoded `lemwarm_pausado=true` en Cond 7:**
+- No verificable desde Code (PM ejecuta pausa manualmente en panel Lemwarm — L38).
+- Asumimos true para que no bloquee operativamente. Si PM no pausó realmente, la condición no se cumple pero el worker no lo detecta y dispararía igual. Es deuda consciente — alternativa sería una columna `lemwarm_paused_at` en mailboxes que PM marca manualmente en /settings. Por simplicidad no se implementa en v1.
+
+**Aplicado en:**
+- Migration `16_auto_switch_autonomous.sql`: añade `mailboxes.auto_switch_enabled` + `mailboxes.scheduled_autonomous_switch_at`. Default ON.
+- `apps/workers/monitoring/auto_switch_to_autonomous.py`: worker 6h. 4 casos (autonomo ya, toggle off, schedule con rota, schedule alcanzado, no schedule + todas verdes).
+- `apps/workers/shared/notifications.py`: helper Resend HTTP API best-effort (L8 — sin RESEND_API_KEY → warning + skip, sin abortar).
+- `/settings` UI: nueva Card "Auto-switch a autónomo (Bloque 6 — L50)" con toggle + scheduled state + rollback emergency + tabla 7 condiciones evaluadas server-side.
+- Server actions: `toggleAutoSwitchEnabledAction`, `cancelScheduledSwitchAction`. Paper trail en events.
+- systemd: `demin-auto-switch.service` + `.timer` cada 6h. Pendiente despliegue VPS.
+
+**Trigger inmediato:** próxima sesión Code o PM despliegan systemd unit al VPS Hetzner: `scp infra/systemd/demin-auto-switch.{service,timer} demin@vps:/etc/systemd/system/ + sudo systemctl daemon-reload + sudo systemctl enable --now demin-auto-switch.timer`. Sin esto, el worker no corre en background; solo se puede invocar manualmente.
+
+**Mitigación pendiente para Cond 7 Lemwarm:** si en futuro queremos auditar realmente que PM pausó Lemwarm, añadir columna `mailboxes.external_warmup_paused_at` y toggle en /settings que PM marca tras pausar en panel Lemwarm. Tarea de mejora, no bloqueante.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
