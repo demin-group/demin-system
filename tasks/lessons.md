@@ -1349,6 +1349,30 @@ La salida limpia: usar `Flow` (no `InstalledAppFlow`) con `redirect_uri="http://
 
 ---
 
+## 2026-05-26 — Lección 48: PM acepta el riesgo de refresh_token OAuth en plaintext
+
+**Contexto:** durante la re-autorización OAuth gmail.modify del 26-may (Lección 47), `seed_oauth_token` falló al cifrar con Vault por UniqueViolation (el secret `oauth_refresh_token_gonzalo.perez@demingroupmadrid.com` ya existía de un intento previo de hace 2 semanas — Lección 31). Cayó al fallback PLAINTEXT: el refresh_token actual con scope `gmail.modify` está guardado sin cifrar en `mailboxes.oauth_refresh_token_encrypted`.
+
+**Decisión PM (Alberto):** aceptar el riesgo de no cifrar y NO ejecutar la limpieza (`DELETE FROM vault.secrets WHERE name='oauth_refresh_token_...' + re-correr seed`).
+
+**Riesgo asumido:** el refresh_token da acceso completo (lectura, escritura, modificación y eliminación de emails) sobre la cuenta `gonzalo.perez@demingroupmadrid.com`. Vectores de exposición a los que PM está expuesto al elegir no cifrar:
+
+- Filtración de credenciales `service_role` de Supabase (Code, workers VPS, env vars Vercel).
+- Dumps o exports de BD que terminen en logs, chats, repos o backups.
+- Compromiso del VPS Hetzner donde corre `seed_oauth_token`.
+- Copia-pega de SELECT en logs o screenshots.
+- Futuras sesiones de Code o humanos haciendo SELECT y mostrando el valor.
+
+RLS de Supabase protege contra acceso vía API pública pero NO contra ninguno de los vectores anteriores.
+
+**Mitigación recomendada (no aplicada):** cifrar con Vault usando 5 min de trabajo en próxima sesión eliminaría ~95% de los vectores.
+
+**Si en el futuro ocurre incidente relacionado con la cuenta de Gmail de Gonzalo:** este registro existe para post-mortem.
+
+**Aplicado en:** sin acción. Decisión PM cerrada el 2026-05-26.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
