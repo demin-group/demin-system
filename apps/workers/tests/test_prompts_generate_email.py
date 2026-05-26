@@ -288,3 +288,86 @@ def test_closing_mentions_d28_in_system() -> None:
     """Lección 39: el closing v2 envía a los 28 días (no 10 como v1)."""
     _, system, _ = _load("closing")
     assert "28 días" in system or "28 dias" in system or "+28" in system
+
+
+# ─── 12. Lección 46 — prompt re_engage_40 nuevo ────────────────────────────
+
+
+def _path_re_engage_40() -> Path:
+    return PROMPTS_DIR / "generate_email_re_engage_40.md"
+
+
+def _load_re_engage_40() -> tuple[str, str, str]:
+    raw = _path_re_engage_40().read_text(encoding="utf-8")
+    parts = raw.split("## System", 1)
+    after_system = parts[1]
+    sys_user = after_system.split("## User template", 1)
+    return raw, sys_user[0].strip(), sys_user[1].strip()
+
+
+def test_re_engage_40_file_exists() -> None:
+    """Lección 46: prompt generate_email_re_engage_40.md debe existir."""
+    assert _path_re_engage_40().exists(), (
+        "falta generate_email_re_engage_40.md (Lección 46)"
+    )
+
+
+def test_re_engage_40_has_common_variables() -> None:
+    """re_engage_40 debe tener las mismas variables base que los otros 3
+    + correos_previos + respuesta_no_ahora."""
+    _, _, user = _load_re_engage_40()
+    missing = [v for v in COMMON_VARS if v not in user]
+    assert not missing, f"re_engage_40: faltan variables {missing}"
+    assert "{correos_previos}" in user
+    assert "{respuesta_no_ahora}" in user
+
+
+def test_re_engage_40_mentions_40_days_in_system() -> None:
+    """Lección 46: el system debe explicitar el +40d (no +60d)."""
+    _, system, _ = _load_re_engage_40()
+    text_lower = system.lower()
+    assert "40 días" in system or "40 dias" in system or "+40" in system
+    # NO debe mencionar +60 como cadencia operativa (la cabecera SI puede
+    # mencionarlo para explicar la sustitucion, pero el system no).
+    # Validacion: '60 días' (cadencia) NO debe aparecer en system.
+    assert "60 días" not in system and "60 dias" not in system, (
+        "re_engage_40 system menciona '60 días' -- contradice L46."
+    )
+
+
+def test_re_engage_40_forbids_sender_contact_in_body() -> None:
+    """Lección 40: re_engage_40 hereda la prohibición de email/web/tel."""
+    _, system, _ = _load_re_engage_40()
+    text_lower = system.lower()
+    assert "prohibido" in text_lower
+    assert "@demingroupmadrid.com" in system or "email del remitente" in text_lower
+    assert "firma" in text_lower
+
+
+def test_re_engage_40_forbids_aggressive_subject() -> None:
+    """Lección 42 + L45: re_engage_40 prohíbe asuntos ultimátum."""
+    _, system, _ = _load_re_engage_40()
+    text_lower = system.lower()
+    assert "última oportunidad" in text_lower or "ultima oportunidad" in text_lower
+    assert "prohibido" in text_lower
+
+
+def test_re_engage_40_forbids_reply_in_thread_framing() -> None:
+    """Lección 45: re_engage_40 es correo NUEVO, no respuesta dentro del
+    hilo viejo. El prompt debe prohibir framings tipo 'continuando con',
+    'respondiendo a tu correo anterior'."""
+    _, system, _ = _load_re_engage_40()
+    text_lower = system.lower()
+    assert (
+        "respondiendo a tu correo" in text_lower
+        or "continuando con" in text_lower
+        or "como te decía" in text_lower
+        or "réplica" in text_lower
+        or "replica" in text_lower
+    ), "re_engage_40 system no menciona explicitamente la prohibicion de framing como respuesta en hilo"
+
+
+def test_re_engage_40_has_version_header() -> None:
+    """Regla 8 Apéndice A: prompts versionados."""
+    raw, _, _ = _load_re_engage_40()
+    assert re.search(r"Versi[oó]n\s+\d", raw), "re_engage_40: cabecera sin versión"
