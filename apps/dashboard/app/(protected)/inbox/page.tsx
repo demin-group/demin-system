@@ -4,8 +4,24 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 
+import { ReplyActions } from "./reply-actions";
+
 export const metadata = { title: "Inbox — DEMIN" };
 export const dynamic = "force-dynamic";
+
+// Leccion 45: categorias URGENTES requieren atencion humana inmediata
+// (Gonzalo responde a mano en Gmail; bot NO escribe en hilo).
+const URGENT_CATEGORIES = new Set<string>(["interesado", "pide_info"]);
+// Orden de urgencia para mostrar primero las que requieren atencion.
+const URGENCY_ORDER: Record<string, number> = {
+  interesado: 0,
+  pide_info: 1,
+  desconocido: 2,
+  no_ahora: 3,
+  fuera_oficina: 4,
+  no_interesado: 5,
+  rebote: 6,
+};
 
 const PAGE_SIZE = 25;
 
@@ -169,7 +185,16 @@ export default async function InboxPage({
   ]);
 
   // Agrupar por estado pendiente vs auto-handled.
-  const pendientes = replies.filter((r) => r.human_action === "pendiente");
+  // Pendientes: orden por urgencia (interesado/pide_info primero, L45),
+  // luego por fecha desc dentro de cada grupo.
+  const pendientes = replies
+    .filter((r) => r.human_action === "pendiente")
+    .sort((a, b) => {
+      const ua = URGENCY_ORDER[a.category ?? "desconocido"] ?? 99;
+      const ub = URGENCY_ORDER[b.category ?? "desconocido"] ?? 99;
+      if (ua !== ub) return ua - ub;
+      return b.received_at.localeCompare(a.received_at);
+    });
   const handled = replies.filter((r) => r.human_action !== "pendiente");
 
   const filterLinks = [
@@ -217,9 +242,11 @@ export default async function InboxPage({
             Pendientes ({pendientes.length})
           </h2>
           <p className="text-xs text-muted-foreground">
-            Estas respuestas requieren tu atención. Acción Apéndice A regla 2:
-            opt-out enforced automáticamente; cualquier otra acción humana se
-            hace fuera del dashboard por ahora (responder desde Gmail Gonzalo).
+            Respuestas que requieren tu atención. <strong>Ordenadas por
+            urgencia: interesado → pide_info → resto.</strong> Lección 45:
+            tú respondes en Gmail directamente. El bot NUNCA escribe dentro
+            del hilo abierto (ni acuse opt-out). Tras responder/decidir,
+            usa los botones de acción.
           </p>
         </CardHeader>
         <Separator />
@@ -310,9 +337,20 @@ function ReplyCard({
     hour: "2-digit",
     minute: "2-digit",
   });
+  const isUrgent = reply.category !== null && URGENT_CATEGORIES.has(reply.category);
+  const isPending = reply.human_action === "pendiente";
   return (
-    <div className="rounded-md border p-3">
+    <div
+      className={`rounded-md border p-3 ${
+        isUrgent && isPending ? "border-red-400 bg-red-50/30" : ""
+      }`}
+    >
       <div className="flex flex-wrap items-center gap-2">
+        {isUrgent && isPending && (
+          <span className="rounded-md bg-red-600 px-2 py-0.5 text-xs font-bold uppercase text-white">
+            ⚠ URGENTE
+          </span>
+        )}
         <strong>{company}</strong>
         <span className="text-xs text-muted-foreground">
           ({contact_email})
@@ -347,19 +385,15 @@ function ReplyCard({
         </pre>
       )}
       {reply.ai_classification_reason && (
-        <p className="mt-2 text-xs text-muted-foreground italic">
+        <p className="mt-2 text-xs italic text-muted-foreground">
           IA: {reply.ai_classification_reason}
         </p>
       )}
-      {reply.ai_suggested_response && (
-        <details className="mt-2 text-xs">
-          <summary className="cursor-pointer font-medium text-emerald-900">
-            Respuesta sugerida IA
-          </summary>
-          <pre className="mt-1 whitespace-pre-wrap rounded-md bg-emerald-50 p-2">
-            {reply.ai_suggested_response}
-          </pre>
-        </details>
+      {/* L45: NO mostrar ai_suggested_response. El bot no responde dentro
+          del hilo abierto; Gonzalo responde a mano en Gmail. Si el campo
+          existe en BD por compatibilidad, se ignora en render. */}
+      {isPending && (
+        <ReplyActions replyId={reply.id} currentCategory={reply.category} />
       )}
     </div>
   );
