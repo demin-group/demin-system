@@ -1280,6 +1280,48 @@ Adicional: cuando re-corrí `apply_migrations.py --env prod`, la migración 13 f
 
 ---
 
+## 2026-05-26 — Lección 45: el bot no responde dentro de hilos abiertos por el prospecto
+
+**Contexto:** tras ver primeras respuestas inbound a los 20 envíos productivos del 26-may, PM decidió que cualquier respuesta del prospecto la contesta Gonzalo a mano. El bot NUNCA escribe dentro de un hilo abierto, ni siquiera con aprobación humana. Esto modifica el plan `todo.md` §11.2 que prevéa "draft de respuesta sugerida" para `interesado` y `pide_info`.
+
+**Distinción clave — dos cosas distintas:**
+
+1. **Respuesta dentro de hilo abierto** = bot contesta a un correo que el prospecto le ha enviado. **PROHIBIDO en cualquier forma.** Esto incluye el acuse automático de opt-out que el plan original prevéa. Gonzalo decide si acusa o no, a mano.
+
+2. **Follow-up programado** = correo NUEVO en frio con otro ángulo, planificado por la secuencia o por el re-engage. **Sigue siendo automático.** No es "responder", es continuar la secuencia de prospección.
+
+**Matriz de acciones actualizada por categoría de respuesta:**
+
+| Categoría | Bot escribe dentro del hilo | Bot programa correo nuevo futuro | Notificar a Gonzalo |
+|---|---|---|---|
+| `interesado` | NO | NO | Sí, flag urgente en /inbox |
+| `pide_info` | NO | NO | Sí, flag urgente en /inbox |
+| `no_ahora` | NO | Sí, `re_engage_40` a +40d | No |
+| `no_interesado` | NO | Sí, `re_engage_90` a +90d | No |
+| `rebote` | NO | NO (marca email inválido) | No |
+| `fuera_oficina` | NO | Reprograma siguiente toque del plan | No |
+| Opt-out explícito | NO (ni acuse) | NO (exclusión permanente) | Sí, log silencioso |
+
+**Aplicado en:** sesión Code post-26may, Bloque C.
+
+---
+
+## 2026-05-26 — Lección 46: re-engage `no_ahora` cambia de +60d a +40d
+
+**Contexto:** revisión de la cadencia operativa tras observar primeras respuestas. PM decidió acortar la ventana de re-engage para `no_ahora` de +60 días (Lección 1) a +40 días. La lógica: "no es el momento" rara vez significa "vuelve en 2 meses"; con frecuencia significa "esta semana mal, próximo mes mejor". +40d cae a las ~6 semanas, suficiente para que el contexto del prospecto cambie sin parecer insistente.
+
+**Esto sustituye explícitamente el +60d de Lección 1.** El `no_interesado` se mantiene en +90d, sin cambio.
+
+**Implementación:**
+
+- Añadir nuevo ángulo `re_engage_40` a la lógica de `handle_actions.py`.
+- El prompt `generate_email_re_engage_40.md` se crea como variante del `re_engage_60` existente, con redacción adaptada al timing más corto ("han pasado unas semanas y" en lugar de "ha pasado un trimestre").
+- Migrar cualquier `messages` con `angle='re_engage_60'` ya programado: si `scheduled_for` está todavía en el futuro, recalcular como `original_reply_at + 40d` y cambiar `angle` a `re_engage_40`. Si ya se envió, no tocar.
+
+**Aplicado en:** sesión Code post-26may, Bloque C.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
