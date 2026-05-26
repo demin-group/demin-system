@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from pipeline.infer_domain import slugify_company_name
+from pipeline.infer_domain import GENERIC_DOMAIN_BLACKLIST, slugify_company_name
 from pipeline.permute_emails import (
     T4_PREFIXES,
     catch_all_probe,
@@ -46,10 +46,24 @@ def test_slugify_handles_accents() -> None:
 
 def test_slugify_returns_multiple_variants() -> None:
     out = slugify_company_name("REFORMAS GARCIA HERMANOS SL")
-    # variante 1: juntas, variante 2: con guiones, variante 3: primera palabra
+    # variante 1: juntas, variante 2: con guiones.
+    # Variante "primera palabra" REMOVIDA tras smoke 2026-05-26 (causaba
+    # falsos positivos: 'constructora' matchea constructora.es de OTRA empresa).
     assert "reformasgarciahermanos" in out
     assert "reformas-garcia-hermanos" in out
-    assert "reformas" in out
+    assert "reformas" not in out, (
+        "variante primera-palabra debe haberse removido (smoke 2026-05-26)"
+    )
+
+
+def test_slugify_no_variante_primera_palabra_constructora() -> None:
+    """Regresion guard: 'CONSTRUCTORA TEPEYAC SA' NO debe producir
+    'constructora' como variante -- matchearia constructora.es de OTRA
+    empresa y mandariamos email a tercero."""
+    out = slugify_company_name("CONSTRUCTORA TEPEYAC SA")
+    assert "constructora" not in out
+    assert "constructoratepeyac" in out
+    assert "constructora-tepeyac" in out
 
 
 def test_slugify_strips_stopwords_when_useful() -> None:
@@ -72,6 +86,15 @@ def test_slugify_dedup_variants() -> None:
     """Una sola palabra no debe duplicar entre variante-junta y guiones."""
     out = slugify_company_name("DEMOLICIONES SL")
     assert out == ["demoliciones"]
+
+
+def test_generic_blacklist_contains_known_offenders() -> None:
+    """Smoke 2026-05-26 vio 'constructora.es' y 'urbanismo.com' como
+    falsos positivos -- deben estar en blacklist."""
+    assert "constructora.es" in GENERIC_DOMAIN_BLACKLIST
+    assert "constructora.com" in GENERIC_DOMAIN_BLACKLIST
+    assert "urbanismo.com" in GENERIC_DOMAIN_BLACKLIST
+    assert "urbanismo.es" in GENERIC_DOMAIN_BLACKLIST
 
 
 # ─── permute_emails ────────────────────────────────────────────────────────

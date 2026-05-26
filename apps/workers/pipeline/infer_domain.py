@@ -56,6 +56,28 @@ STOPWORDS = (
 
 TLDS_TO_TRY = ("es", "com", "eu")
 
+# Blacklist de dominios genericos sectoriales que NUNCA son la empresa
+# concreta. Si infer_domain produce uno de estos, descartar.
+# Origen: smoke 2026-05-26 vio constructora.es matchear para 2 empresas
+# distintas con primera palabra "CONSTRUCTORA"; urbanismo.com matchear
+# `info@` con dominio externo no relacionado con la empresa target.
+GENERIC_DOMAIN_BLACKLIST = frozenset({
+    # Sustantivos sectoriales que tienen dominio comercial activo
+    # pertenecientes a OTRAS empresas no nuestras.
+    "constructora.es", "constructora.com",
+    "construcciones.es", "construcciones.com",
+    "demoliciones.es", "demoliciones.com",
+    "reformas.es", "reformas.com",
+    "urbanismo.es", "urbanismo.com",
+    "arquitectura.es", "arquitectura.com",
+    "promotora.es", "promotora.com",
+    "obras.es", "obras.com",
+    "edificacion.es", "edificacion.com",
+    "ingenieria.es", "ingenieria.com",
+    "grupo.es", "grupo.com",
+    "servicios.es", "servicios.com",
+})
+
 
 @dataclass(slots=True, frozen=True)
 class DomainCandidate:
@@ -106,10 +128,13 @@ def slugify_company_name(nombre: str) -> list[str]:
     # Variante 2: guiones (solo si hay >=2 palabras tras stopword removal).
     if len(words_no_stop) >= 2:
         out.append("-".join(words_no_stop))
-    # Variante 3: solo primera palabra significativa (a veces nombres
-    # cortos cuelgan de `<primerapalabra>.es`).
-    if len(words_no_stop) >= 2 and len(words_no_stop[0]) >= 4:
-        out.append(words_no_stop[0])
+    # NOTA: variante "primera palabra" REMOVIDA tras smoke 2026-05-26.
+    # Producia falsos positivos peligrosos: "CONSTRUCTORA TEPEYAC" ->
+    # "constructora" -> dominio constructora.es existe pero es de OTRA
+    # empresa. Mandar email alli = problema legal/reputacional. La
+    # blacklist GENERIC_DOMAIN_BLACKLIST es defensa adicional para los
+    # pocos casos donde variante 1 colapsa a un termino generico (raro
+    # pero posible).
     # Deduplicar manteniendo orden.
     seen: set[str] = set()
     deduped: list[str] = []
@@ -162,6 +187,10 @@ def infer_domain(
     for tld in tlds:
         for slug in slugs:
             candidate = f"{slug}.{tld}"
+            # Blacklist defensiva: dominios genericos sectoriales NUNCA
+            # se aceptan aunque el slug coincida.
+            if candidate in GENERIC_DOMAIN_BLACKLIST:
+                continue
             mx = _mx_records_for(candidate, timeout=mx_timeout)
             if mx:
                 return DomainCandidate(domain=candidate, mx_records=mx)
