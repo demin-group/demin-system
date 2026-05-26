@@ -181,3 +181,74 @@ export async function toggleHitlModeAction(
   revalidatePath("/settings");
   return { ok: true, new_mode: targetMode };
 }
+
+/**
+ * Toggle auto_switch_enabled (Fase 5 sesion 2026-05-26).
+ *
+ * Controla si el worker auto_switch_to_autonomous puede PROGRAMAR el switch
+ * cuando las 7 condiciones del Bloque 6 esten verdes. Default ON (decision PM
+ * L50). Si OFF: worker solo evalua y notifica.
+ *
+ * NOTA: este toggle NO es el rollback de emergencia. Si el sistema YA esta
+ * en autonomo y quieres volver a HITL, usa toggleHitlModeAction(..., true).
+ */
+export async function toggleAutoSwitchEnabledAction(
+  mailboxId: string,
+  enabled: boolean,
+): Promise<{ ok: true; new_value: boolean } | { ok: false; error: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) return { ok: false, error: "Sin sesion" };
+
+  const admin = createAdminClient();
+  const updates: Record<string, unknown> = { auto_switch_enabled: enabled };
+  // Si desactivamos, cancelamos cualquier schedule pendiente como side-effect
+  // limpio. El worker lo haria igual en su proximo run, pero hacerlo aqui
+  // hace la UI consistente al instante.
+  if (!enabled) {
+    updates.scheduled_autonomous_switch_at = null;
+  }
+  const { error } = await admin
+    .from("mailboxes")
+    .update(updates)
+    .eq("id", mailboxId);
+  if (error) return { ok: false, error: error.message };
+
+  await admin.from("events").insert({
+    type: "auto_switch_enabled_changed",
+    payload: {
+      mailbox_id: mailboxId,
+      new_value: enabled,
+      changed_by: user.email,
+    },
+  });
+  revalidatePath("/settings");
+  return { ok: true, new_value: enabled };
+}
+
+/**
+ * Cancela un switch programado sin desactivar el auto_switch global.
+ * El sistema sigue evaluando; si las condiciones se mantienen verdes el
+ * worker programara de nuevo en el proximo run (con email previo).
+ */
+export async function cancelScheduledSwitchAction(
+  mailboxId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) return { ok: false, error: "Sin sesion" };
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("mailboxes")
+    .update({ scheduled_autonomous_switch_at: null })
+    .eq("id", mailboxId);
+  if (error) return { ok: false, error: error.message };
+
+  await admin.from("events").insert({
+    type: "auto_switch_schedule_cancelled",
+    payload: { mailbox_id: mailboxId, cancelled_by: user.email },
+  });
+  revalidatePath("/settings");
+  return { ok: true };
+}

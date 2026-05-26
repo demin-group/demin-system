@@ -1,0 +1,27 @@
+[Unit]
+Description=DEMIN auto_switch_to_autonomous — evalua 7 condiciones Bloque 6 y programa switch hitl_mode=false con email previo 24h. Decision PM L50 threshold pool 50.
+Documentation=https://github.com/demin-group/demin-system
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=demin
+Group=demin
+WorkingDirectory=/home/demin/demin-system/apps/workers
+Environment=ENV=prod
+Environment=PATH=/home/demin/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# RESEND_API_KEY se hereda de .env.prod si esta declarada (notifications
+# helper lee via os.environ; ausencia -> warning + skip envio sin abortar).
+ExecStart=/home/demin/.local/bin/uv run python -m monitoring.auto_switch_to_autonomous --env prod
+
+TimeoutStartSec=300
+Nice=10
+IOSchedulingClass=idle
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=demin-auto-switch
+
+# Exit 0 = OK siempre. Exit 2 = error config/BD (raro, requiere investigar).
+Restart=no

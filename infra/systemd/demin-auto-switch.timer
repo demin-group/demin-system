@@ -1,0 +1,14 @@
+[Unit]
+Description=Timer: dispara demin-auto-switch cada 6h
+Documentation=https://github.com/demin-group/demin-system
+
+[Timer]
+# Cada 6h. La ventana 24h del schedule garantiza que PM tenga al menos 3-4
+# disparos para ver email + cancelar si quiere antes de que se ejecute.
+OnBootSec=15min
+OnUnitActiveSec=6h
+Persistent=true
+Unit=demin-auto-switch.service
+
+[Install]
+WantedBy=timers.target
