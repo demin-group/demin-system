@@ -51,6 +51,11 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 MODEL_FOR_TASK: dict[str, str] = {
     "classify_descr": settings.ANTHROPIC_MODEL_CLASSIFY,
     "research_prospect": settings.ANTHROPIC_MODEL_RESEARCH,
+    # Opcion C T4: research sin web. Mismo modelo que research_prospect
+    # porque la calidad importa (sin web es facil que el LLM alucine
+    # proyectos concretos -- el prompt v1 lo restringe pero el modelo
+    # buen criterio ayuda).
+    "research_t4_nowebsite": settings.ANTHROPIC_MODEL_RESEARCH,
     "generate_draft": settings.ANTHROPIC_MODEL_GENERATE,
     "classify_reply": settings.ANTHROPIC_MODEL_REPLY,
     "suggest_response": settings.ANTHROPIC_MODEL_GENERATE,
