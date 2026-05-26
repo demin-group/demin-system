@@ -1322,6 +1322,33 @@ Adicional: cuando re-corrí `apply_migrations.py --env prod`, la migración 13 f
 
 ---
 
+## 2026-05-26 — Lección 47: OAuth re-autorización Gmail con PM como mensajero — patrón Flow manual (sin local-server, sin OOB)
+
+**Contexto:** B7 (Lección 36) llevaba bloqueado desde 2026-05-14 (~12 días). Causa raíz operativa: el script original `gmail_oauth_setup.py` usa `InstalledAppFlow.run_local_server`, que abre browser local y levanta server HTTP en localhost — útil cuando ejecutor y autorizador son la MISMA persona, inservible cuando Code está en una máquina (CI / dev local del PM) y Gonzalo (el dueño real del buzón) está en otra. Google también deprecó OOB (`urn:ietf:wg:oauth:2.0:oob`) en 2022, así que no hay flow Google-canónico para autorización sin redirect web.
+
+La salida limpia: usar `Flow` (no `InstalledAppFlow`) con `redirect_uri="http://localhost:<port>"` (Desktop OAuth solo acepta localhost/127.0.0.1, no IPs públicas), generar URL manualmente, dársela a Gonzalo. Gonzalo autoriza → su browser intenta redirect a localhost:8765 → muestra "no se puede conectar" pero la URL en la barra contiene `?code=...&scope=...&state=...`. PM copia esa URL y se la pasa a Code. Code intercambia y persiste.
+
+**Sesión 2026-05-26 ejecutada:** Code+PM+Gonzalo cerraron B7 en una vuelta (~20 min wall clock, 2 ciclos URL+code porque el primer code se quemó por bug del script — usaba `oauth2.googleapis.com/userinfo` para validar email, endpoint que requiere scopes `openid email profile` NO pedidos. Reemplazado por `gmail.googleapis.com/gmail/v1/users/me/profile` que SÍ está cubierto por `gmail.modify`). Script `scripts/oauth_reauth_manual.py` queda en repo como herramienta reusable.
+
+**Regla resultante (patrón meta para futuras OAuth re-autorizaciones donde Code y dueño-del-recurso son personas distintas):**
+
+- **NO usar `InstalledAppFlow.run_local_server`** cuando el dueño del recurso no está en la misma máquina que el script. Usar `Flow.from_client_secrets_file` directo con `redirect_uri` localhost + puerto fijo.
+- **Persistir PKCE `code_verifier`** entre generate y exchange — son invocaciones de script distintas, el verifier debe matchear o Google rechaza el code (challenge mismatch). Fichero local gitignored.
+- **Validar identidad del autorizador con un endpoint cubierto por el scope solicitado**, no con `oauth2/userinfo` por defecto. Para Gmail: `gmail/v1/users/me/profile`. Para Drive: `drive/v3/about?fields=user`. Para Calendar: `calendar/v3/users/me/calendarList?maxResults=1`. Cualquier endpoint que devuelva email + falle 401 si scope no es el correcto cumple — y evita pedir scopes extra solo para validar.
+- **Guardar el refresh_token en `.tmp` ANTES de validaciones posteriores**. Si una validación cosmética falla (email no coincide, scope falta, etc.), el code ya se quemó (Google los invalida tras 1 uso). Guardar primero evita perder el token y obligar al humano a re-autorizar (10+ min extra). Si todas las validaciones pasan, mover `.tmp` → fichero final. Si falla validación crítica (scope insuficiente, email equivocado), borrar `.tmp` y dejar el state limpio.
+- **Trabajo de mensajero del PM**: pasar URL completa de la barra del navegador (no solo el code) cuando es posible — permite validación adicional del `state`, `scope`, `iss` antes de procesar el code. Si solo viene code pelado, también funciona pero pierdes una capa de validación gratis.
+
+**Por qué importa:** OAuth re-autorizaciones son operacionalmente caras (coordinar 3 personas + ventana ciega de envío + riesgo de equivocarse de cuenta). El patrón anterior obligaba a uno de dos malos caminos: (a) PM tiene la contraseña de Gonzalo y autoriza por él (legal/imagen problemático), o (b) Gonzalo clona el repo y ejecuta uv en su máquina (overhead técnico que no es razonable). El patrón Flow manual elimina ambos.
+
+**Aplicado en:**
+- `apps/workers/scripts/oauth_reauth_manual.py` — nuevo, sustituye uso de `gmail_oauth_setup.py` para escenarios remotos. El original se mantiene para flows local-only (dev rápido del PM en su máquina sin Gonzalo presente).
+- `.gitignore` extendido con `.oauth_pkce_verifier.txt`.
+- Sesión 2026-05-26: B7 cerrado. mailbox `gonzalo.perez@demingroupmadrid.com` tiene refresh_token con scope `gmail.modify` (verificado via `users.getProfile` + run real de `poll_imap` end-to-end con 50 mensajes procesados + 0 matched + exit 0).
+
+**Trigger inmediato:** próxima vez que cualquier worker requiera scope OAuth ampliado (ej. Postmaster Tools, Calendar para agendar llamadas, Drive para adjuntos), reusar `oauth_reauth_manual.py` con scope diferente. La estructura del script (`--step generate / exchange --auth-url`) es genérica.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>

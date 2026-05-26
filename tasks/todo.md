@@ -2293,6 +2293,51 @@ v1 (esta sesión) = recolección + observabilidad básica. v2 = activar señal c
 
 ---
 
+### 2026-05-26 — B7 cerrado + Bloque C ejecutado (lectura+clasificación+aprendizaje respuestas)
+
+Sesión Code+PM+Gonzalo cierra B7 (OAuth gmail.modify) y construye el sistema de respuestas según matriz Lección 45 (cero respuesta automática en hilo) + Lección 46 (re_engage_40d sustituye 60d).
+
+**Fase 1 — B7 OAuth (cerrado):**
+
+- Script nuevo `apps/workers/scripts/oauth_reauth_manual.py`: variante PM-mensajero (sin local-server) del `gmail_oauth_setup.py` original. Lección 47 documenta patrón meta.
+- Flujo ejecutado: Code generó URL → PM la pasó a Gonzalo → Gonzalo autorizó en su navegador → URL de vuelta a PM → Code intercambió + validó scope=`gmail.modify` + email=`gonzalo.perez@demingroupmadrid.com` via `gmail/v1/users/me/profile` (no `oauth2/userinfo` que requiere scopes adicionales) + persistió en `mailboxes.oauth_refresh_token_encrypted` como `PLAINTEXT:` (Vault falló con UniqueViolation por secret previo del intento Lección 31).
+- 2 ciclos URL+code: primer code se quemó por bug del script (usaba endpoint userinfo que requiere openid/email scopes no pedidos). Script arreglado mid-flight para usar `users.getProfile`. Lección 47 captura el patrón.
+- Verificación E2E: SSH al VPS + ejecución manual `poll_imap` con `ENV=prod` → `list_messages HTTP 200` + 50 mensajes procesados + `matched=0` (ningún email en bandeja es respuesta a nuestros envíos productivos; todos son DMARC reports / alertas Vercel / newsletters Apollo+Hunter+Lemlist).
+- Tiempo total Fase 1: ~20 min wall clock.
+
+**Fase 2 — Bloque C (sistema de respuestas L45+L46):**
+
+- `apps/workers/replies/handle_actions.py` reescrito con matriz Lección 45:
+  - `interesado` / `pide_info` → INSERT evento `interesado_flag` / `pide_info_flag` + cancel future steps + `human_action='pendiente'` (visibilidad /inbox). **NO genera draft de respuesta sugerida** (cambio vs §11.2 original).
+  - `no_ahora` → re_engage_40 a +40d (L46 sustituye +60d).
+  - `no_interesado` → re_engage_90 a +90d (sin cambio).
+  - `rebote` → email_verified=false + cancel future + archivado.
+  - `fuera_oficina` → parser regex de fecha de retorno en body (`scripts/handle_actions.parse_ooo_return_date`, español + dd/mm/yyyy). Si parsea: reschedule a fecha+5d. Default sin parse: +7d. Horizon 120d.
+  - opt-out explícito → cancel future + INSERT evento `optout_explicit` + archivado. **NO acuse automático** (cambio vs plan original §11.2).
+- `apps/workers/shared/prompts/generate_email_re_engage_40.md` nuevo (versión 1): adapta closing v2 al timing +40d. Aplica L39 (saludo neutro), L40 (sin email remitente en cuerpo), L42 (sin ultimátum), L45 (correo NUEVO en frío, NO réplica en hilo).
+- `apps/dashboard/app/(protected)/inbox/`: reformulado.
+  - Orden por urgencia en pendientes (interesado > pide_info > resto > rebote).
+  - Badge "⚠ URGENTE" rojo + acento visual para `interesado`/`pide_info` con `human_action='pendiente'`.
+  - Quitada sección "Respuesta sugerida IA" del render (L45). Campo `ai_suggested_response` permanece en BD por compatibilidad pero se ignora.
+  - Botones nuevos via `reply-actions.tsx` (client component): "Marcar como respondida" / "Reclasificar" (dropdown 7 categorías) / "Archivar". Server actions en `inbox/actions.ts`.
+- Cobertura tests: 20 nuevos para `handle_actions` (constantes L46 + parse OOO + dry-run labels), 7 nuevos para `generate_email_re_engage_40.md`. Total 27 tests verdes en Bloque C. tsc + eslint dashboard limpios.
+
+**Paso 2.4 (test E2E con respuesta real): pendiente.**
+
+Per regla dura del prompt: si N=0 respuestas matched en Paso 1.4 (caso real al cierre), NO insert sintético. El test E2E queda para cuando llegue la primera respuesta real a uno de los 20+ envíos productivos. `poll_imap.timer` corre cada 5 min — la primera respuesta se procesará automáticamente y `classify_replies` + `handle_actions` se encadenan en sus timers respectivos.
+
+**Coste sesión:** $0 LLM consumido (todo trabajo offline + edición código + tests + SSH). Cap $15 íntegro.
+
+**Tareas humanas pendientes prioritarias actualizadas:**
+
+1. **PM**: verificar deploy Vercel actualizado tras commits de esta sesión (especialmente `1c6a2f3` que toca /inbox). Notas inbox del VPS mostraron varios "Failed production deployment on team 'Gonzalo Perez's projects'" — investigar si los últimos deploys están fallando. Si sí, redeploy manual.
+2. **PM**: vigilar `/inbox` cuando llegue primera respuesta real. Verificar manualmente: (a) `replies` se crea con categoría, (b) `handle_actions` ejecuta acción correcta, (c) NO se crea draft de respuesta en `messages` (cero generación en hilo abierto), (d) si es `no_ahora`: hay `messages.angle='re_engage_40'` con `scheduled_for` a +40d.
+3. **PM**: monitorizar pool. 9 vírgenes restantes; trigger `audit_pool_contacts.py --threshold 30` cuando cola HITL baje de 20 drafted.
+4. **PM**: Voyage billing (heredado). Sin payment method los próximos drafts caen al 3 RPM.
+5. **PM**: re-evaluar Jaime Nozaleda el 2026-06-25 (cooling expira).
+
+---
+
 ## Apéndice A — Reglas no negociables (resumen para Claude Code)
 
 1. **Nunca** envíes un correo sin pasar por la cola de aprobación (en HITL). En autónomo, nunca sin pasar las validaciones de §10.3.
