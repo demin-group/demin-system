@@ -5,21 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
-/**
- * Categorias soportadas en `message_revisions.rejection_category`. Espejo del
- * CHECK CONSTRAINT en migration 14.
- */
-export const REJECTION_CATEGORIES = [
-  "tono",
-  "datos_incorrectos",
-  "no_icp",
-  "longitud",
-  "asunto",
-  "duplicado_contacto",
-  "otro",
-] as const;
-
-export type RejectionCategory = (typeof REJECTION_CATEGORIES)[number];
+import { REJECTION_CATEGORIES, type RejectionCategory } from "./categories";
 
 /**
  * Approve message HITL.

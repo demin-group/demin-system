@@ -8,9 +8,8 @@ import {
   archiveReplyAction,
   markRespondedAction,
   reclassifyReplyAction,
-  REPLY_CATEGORIES,
-  type ReplyCategory,
 } from "./actions";
+import { REPLY_CATEGORIES, type ReplyCategory } from "./categories";
 
 type Props = {
   replyId: string;

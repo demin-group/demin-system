@@ -5,20 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
-/**
- * Categorias validas para reclasificar (espejo de classify_replies output).
- */
-export const REPLY_CATEGORIES = [
-  "interesado",
-  "pide_info",
-  "no_ahora",
-  "no_interesado",
-  "rebote",
-  "fuera_oficina",
-  "desconocido",
-] as const;
-
-export type ReplyCategory = (typeof REPLY_CATEGORIES)[number];
+import { REPLY_CATEGORIES, type ReplyCategory } from "./categories";
 
 /**
  * Marca una reply como respondida (Gonzalo ya contesto a mano en Gmail).

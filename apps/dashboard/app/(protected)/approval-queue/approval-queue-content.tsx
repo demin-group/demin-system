@@ -18,12 +18,8 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
-import {
-  approveMessageAction,
-  rejectMessageAction,
-  REJECTION_CATEGORIES,
-  type RejectionCategory,
-} from "./actions";
+import { approveMessageAction, rejectMessageAction } from "./actions";
+import { REJECTION_CATEGORIES, type RejectionCategory } from "./categories";
 
 export type DraftItem = {
   id: string;
