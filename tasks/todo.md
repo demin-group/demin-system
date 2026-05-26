@@ -2238,6 +2238,61 @@ Tras observar los primeros 12 envíos productivos del 14–19 de mayo, PM identi
 
 ---
 
+### 2026-05-26 — Check-in + sesión Code "lectura/clasificación de respuestas + métricas v1"
+
+PM hizo check-in operativo el 26-may en cuanto Gonzalo empezó a aprobar drafts. Datos al cierre de la sesión Code:
+
+- Cola HITL prod: 26 drafted + 10 approved + 32 sent (20 enviados hoy 26-may, todos `opening`).
+- 0 `replies` y 0 `message_revisions` — coherente con B7 OAuth pendiente.
+- `mailboxes` sano: status=active, bounce=0%, spam=0%, sin alertas auto_pause.
+- Pool vírgenes restantes: 9 (T1=2, T2=6, T3=1).
+
+**Lecciones nuevas capturadas (L45 + L46 = total 44):**
+
+- **L45**: el bot NO escribe nunca dentro de hilos abiertos por el prospecto. Incluye opt-outs (Gonzalo decide acuse a mano). Distingue "responder dentro de hilo" (prohibido) vs "follow-up programado en frío" (sigue automático). Modifica §11.2.
+- **L46**: re-engage `no_ahora` pasa de +60d (L1) a +40d. `no_interesado` se mantiene en +90d.
+
+**Construcción Bloque D (captura señal + /metrics v1):**
+
+- **Migration 15** (`20260526200000_15_messages_reply_tracking.sql`): añade `messages.reply_received_at timestamptz` y `messages.reply_category text` (CHECK enum de 7 valores). Index parcial sobre ambos donde NOT NULL. Aplicada a prod.
+- **`/metrics` ampliada con sección "Revisiones HITL"**: total filas, edits vs rejects, top 5 rejection_category. Espejo del Bloque 7 commit 05a4436.
+- **"Reply rate por ángulo" reformateado**: columna "Replies / Sent" explícita + columna "Muestra" (muy pequeña <30, pequeña <100, razonable >=100) para que el lector entienda que un 100% sobre 1 envío no es señal.
+- **"Replies por categoría" con nota de tamaño de muestra**: "Basado en N respuestas clasificadas" + warning si N=0 (apunta a B7 OAuth pendiente) o N<10 (muestra muy pequeña).
+
+**Diferido a v2 del aprendizaje (cuando haya ≥50 respuestas inbound acumuladas)** — no construir todavía:
+
+- Aprendizaje activo: auto-rotación de hooks según reply rate por hook; A/B de variantes de prompt.
+- Desgloses granulares en /metrics: por tier (la sección existente del Sprint 6 se mantiene como aggregate), por hook concreto, por día de la semana, por hora.
+- Análisis de patrones de edición: qué frases edita siempre Gonzalo, qué prompts disparan más rechazos.
+
+v1 (esta sesión) = recolección + observabilidad básica. v2 = activar señal capturada para mejorar prompts.
+
+**Construcción Bloque B (lecciones):** commit `4d1edcc`.
+
+**Bloque C BLOQUEADO** (no construido en esta sesión): el sistema de lectura+clasificación+notificación (handle_actions reescrito por L45, prompt `re_engage_40.md`, pantalla `/inbox` reformulada) requiere que `poll_imap.py` funcione end-to-end. Verificación en VPS:
+
+- `journalctl _SYSTEMD_UNIT=demin-poll-imap.service --since 'yesterday' --no-pager` muestra 7+ runs en últimas 2h, todos terminan con `403 list_messages -- scope OAuth insuficiente. Bloqueador B7`.
+- OAuth de Gonzalo sigue con scope `gmail.send` (Sprint 4 paso 7), NO con `gmail.modify` (requerido por Fase 3 Sprint 5 — L36).
+- Cambio de código en `gmail_oauth_setup.py:72` ya aplicado en commit `843a9a6` (sesión 2026-05-25 Bloque 4). Doc operativa `docs/oauth_reauthorize_gmail.md` lista los 6 pasos para PM+Gonzalo.
+
+→ Bloque C entra en cola PARA SIGUIENTE SESIÓN, condicional a que PM ejecute la re-autorización + confirme `poll_imap` produciendo `replies` en BD.
+
+**Bloque E (auditorías secundarias):**
+
+- **`mailboxes.current_day_sent` clarificado tras leer el código**: el campo es un counter monotónico SIN reset automático — `persist_send_success` solo hace `SET current_day_sent = current_day_sent + 1` (línea 380 `outreach/send_gmail.py`); el comentario en línea 257 lo declara explícitamente `cache informativo`. Después de 32 envíos totales en la vida del mailbox (12 históricos + 20 hoy), el campo vale 32. El cap real lo chequea `count_sent_last_24h` (línea 254) que cuenta `events.type='message_sent'` rolling 24h sobre el mailbox_id — **ventana 24h, no día calendar**. Decisión PM senior eng:
+  - NO renombrar el field (cross-env risk + dev decomisado actualmente impide aplicar consistente; cosmético no urgente).
+  - SÍ cambiar `/metrics` para mostrar `sent_today_real` = count de `messages` con `sent_at::date = today AND mailbox_id = X`, no `current_day_sent`. Esto elimina la confusión visual sin tocar BD.
+  - Aplicado en `apps/dashboard/app/(protected)/metrics/page.tsx`: nueva función `loadMailboxStats` calcula `sent_today` desde `messages.sent_at` y reemplaza el render que antes mostraba `current_day_sent / daily_cap`.
+- **Pool próximo a agotarse**: 9 vírgenes restantes. Cuando los 26 drafted + 10 approved actuales se procesen (~1-2 semanas a 20/día), `auto_replenish` sólo tiene 9 candidatos para refrescar la cola. **Próxima tarea operativa** (no en esta sesión): relanzar Hunter sobre subgrupos T2/T1 que tienen `research_done_at` pero `find_contacts` no dio resultado (~33 T2 + ~69 T1 según logs del /goal), o abordar T4 con Opción C de Sprint 5 (research IA + permutación + verify). Trigger: cuando `audit_pool_contacts.py --threshold 30` salga rojo.
+
+**Tareas humanas pendientes prioritarias:**
+
+1. PM/Gonzalo: re-autorizar OAuth Gmail con scope `gmail.modify` (`docs/oauth_reauthorize_gmail.md`). Sin esto: no se captura ninguna respuesta inbound; v2 del aprendizaje no puede arrancar.
+2. PM: verificar deploy Vercel incluye commits `05a4436` + `2659013` (Bloque 7 backend+frontend) + `2659013` ya está en main; tras esta sesión añadir el commit nuevo de /metrics ampliada. Si Vercel auto-deploy de main está activo, debería pasar solo.
+3. PM: lanzar `audit_pool_contacts.py --env prod --threshold 30` cuando cola HITL baje de 20 drafted, para decidir expansión pool antes de quedarse sin material.
+
+---
+
 ## Apéndice A — Reglas no negociables (resumen para Claude Code)
 
 1. **Nunca** envíes un correo sin pasar por la cola de aprobación (en HITL). En autónomo, nunca sin pasar las validaciones de §10.3.

@@ -60,12 +60,21 @@ type ReplyCategoryStats = {
   count: number;
 };
 
+type RevisionStats = {
+  total: number;
+  edits: number;
+  rejects: number;
+  top_categories: { category: string; count: number }[];
+};
+
 type MailboxStats = {
   email: string;
   status: string;
   sent_7d: number;
   bounces_7d: number;
-  current_day_sent: number;
+  // sent_today_real cuenta messages.sent_at::date = today (no el field
+  // current_day_sent que es cumulative monotonico segun send_gmail.py:257).
+  sent_today_real: number;
   daily_cap: number;
 };
 
@@ -278,15 +287,21 @@ async function loadMailboxStats(): Promise<MailboxStats[]> {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("mailboxes")
-    .select("id, email, status, current_day_sent, daily_cap")
+    .select("id, email, status, daily_cap")
     .order("email", { ascending: true });
   if (error) throw new Error(`mailboxes fallo: ${error.message}`);
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  // Hoy local (servidor Vercel suele ser UTC; aceptable para el dashboard
+  // operativo donde la diferencia con Madrid es ±2h y solo importa el
+  // orden de magnitud).
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const todayStartIso = todayStart.toISOString();
+
   const out: MailboxStats[] = [];
   for (const mb of (data ?? []) as Array<{
-    id: string; email: string; status: string;
-    current_day_sent: number; daily_cap: number;
+    id: string; email: string; status: string; daily_cap: number;
   }>) {
     const msgRows = await admin
       .from("messages")
@@ -312,12 +327,23 @@ async function loadMailboxStats(): Promise<MailboxStats[]> {
         .gte("created_at", sevenDaysAgo);
       bounces7d = bounceEv.count ?? 0;
     }
+
+    // sent_today_real: count de messages.status='sent' con sent_at>=hoy.
+    // No usa mailboxes.current_day_sent que es cumulative monotonico
+    // (cache informativo, send_gmail.py:257).
+    const sentTodayRes = await admin
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("mailbox_id", mb.id)
+      .eq("status", "sent")
+      .gte("sent_at", todayStartIso);
+
     out.push({
       email: mb.email,
       status: mb.status,
       sent_7d: sent7d,
       bounces_7d: bounces7d,
-      current_day_sent: mb.current_day_sent,
+      sent_today_real: sentTodayRes.count ?? 0,
       daily_cap: mb.daily_cap,
     });
   }
@@ -359,6 +385,44 @@ async function loadMonthCost(): Promise<MonthCost> {
   };
 }
 
+async function loadRevisionStats(): Promise<RevisionStats> {
+  const admin = createAdminClient();
+  const totalRes = await admin
+    .from("message_revisions")
+    .select("id", { count: "exact", head: true });
+  const editsRes = await admin
+    .from("message_revisions")
+    .select("id", { count: "exact", head: true })
+    .eq("revision_type", "edit");
+  const rejectsRes = await admin
+    .from("message_revisions")
+    .select("id", { count: "exact", head: true })
+    .eq("revision_type", "reject");
+
+  // Top 5 rejection_category por frecuencia. Categorias fijas del enum (7).
+  const categories = [
+    "tono", "datos_incorrectos", "no_icp", "longitud",
+    "asunto", "duplicado_contacto", "otro",
+  ];
+  const catCounts: { category: string; count: number }[] = [];
+  for (const c of categories) {
+    const r = await admin
+      .from("message_revisions")
+      .select("id", { count: "exact", head: true })
+      .eq("revision_type", "reject")
+      .eq("rejection_category", c);
+    catCounts.push({ category: c, count: r.count ?? 0 });
+  }
+  catCounts.sort((a, b) => b.count - a.count);
+
+  return {
+    total: totalRes.count ?? 0,
+    edits: editsRes.count ?? 0,
+    rejects: rejectsRes.count ?? 0,
+    top_categories: catCounts.slice(0, 5),
+  };
+}
+
 async function loadReplyCategoryStats(): Promise<ReplyCategoryStats[]> {
   const admin = createAdminClient();
   const cats = [
@@ -384,7 +448,7 @@ function pct(n: number, d: number): string {
 export default async function MetricsPage() {
   const [
     funnelTop, funnelMessages, rates, angleStats,
-    tierStats, mailboxStats, monthCost, replyCats,
+    tierStats, mailboxStats, monthCost, replyCats, revisions,
   ] = await Promise.all([
     loadFunnelTop(),
     loadFunnelMessages(),
@@ -394,6 +458,7 @@ export default async function MetricsPage() {
     loadMailboxStats(),
     loadMonthCost(),
     loadReplyCategoryStats(),
+    loadRevisionStats(),
   ]);
 
   const totalMessages =
@@ -516,6 +581,10 @@ export default async function MetricsPage() {
       <Card>
         <CardHeader>
           <h2 className="text-lg font-semibold">Reply rate por angulo</h2>
+          <p className="text-xs text-muted-foreground">
+            Formato &quot;replies / sent = rate&quot;. Si sent &lt; 30 la muestra
+            es muy pequeña — el rate no es fiable estadísticamente.
+          </p>
         </CardHeader>
         <Separator />
         <CardContent className="pt-4">
@@ -523,18 +592,30 @@ export default async function MetricsPage() {
             <thead className="text-left text-xs uppercase text-muted-foreground">
               <tr>
                 <th className="pb-2">Angle</th>
-                <th className="pb-2 text-right">Sent</th>
-                <th className="pb-2 text-right">Replies</th>
+                <th className="pb-2 text-right">Replies / Sent</th>
                 <th className="pb-2 text-right">Reply rate</th>
+                <th className="pb-2 text-right">Muestra</th>
               </tr>
             </thead>
             <tbody>
               {angleStats.map((s) => (
                 <tr key={s.angle} className="border-t">
                   <td className="py-2">{s.angle}</td>
-                  <td className="py-2 text-right">{s.sent}</td>
-                  <td className="py-2 text-right">{s.replied}</td>
-                  <td className="py-2 text-right font-medium">{pct(s.replied, s.sent)}</td>
+                  <td className="py-2 text-right">
+                    {s.replied} / {s.sent}
+                  </td>
+                  <td className="py-2 text-right font-medium">
+                    {pct(s.replied, s.sent)}
+                  </td>
+                  <td className="py-2 text-right text-xs text-muted-foreground">
+                    {s.sent === 0
+                      ? "—"
+                      : s.sent < 30
+                        ? "muy pequeña"
+                        : s.sent < 100
+                          ? "pequeña"
+                          : "razonable"}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -604,7 +685,7 @@ export default async function MetricsPage() {
                   <td className="py-2 text-right">{s.sent_7d}</td>
                   <td className="py-2 text-right">{s.bounces_7d}</td>
                   <td className="py-2 text-right font-medium">{pct(s.bounces_7d, s.sent_7d)}</td>
-                  <td className="py-2 text-right">{s.current_day_sent} / {s.daily_cap}</td>
+                  <td className="py-2 text-right">{s.sent_today_real} / {s.daily_cap}</td>
                 </tr>
               ))}
             </tbody>
@@ -672,6 +753,15 @@ export default async function MetricsPage() {
       <Card>
         <CardHeader>
           <h2 className="text-lg font-semibold">Replies por categoría</h2>
+          <p className="text-xs text-muted-foreground">
+            Basado en {totalReplies} respuesta{totalReplies === 1 ? "" : "s"}{" "}
+            clasificada{totalReplies === 1 ? "" : "s"}.
+            {totalReplies === 0
+              ? " Cero todavía — pendiente B7 OAuth para que poll_imap ingeste."
+              : totalReplies < 10
+                ? " Muestra muy pequeña — patrones no fiables aún."
+                : ""}
+          </p>
         </CardHeader>
         <Separator />
         <CardContent className="pt-4">
@@ -685,6 +775,72 @@ export default async function MetricsPage() {
               />
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Revisiones HITL (Bloque 7) */}
+      <Card>
+        <CardHeader>
+          <h2 className="text-lg font-semibold">Revisiones HITL (edits y rechazos)</h2>
+          <p className="text-xs text-muted-foreground">
+            Basado en {revisions.total} revision{revisions.total === 1 ? "" : "es"}{" "}
+            capturada{revisions.total === 1 ? "" : "s"} en{" "}
+            <code>message_revisions</code>.
+            {revisions.total === 0
+              ? " Cero todavía — Gonzalo no ha editado ni rechazado, o el deploy Vercel no incluye Bloque 7."
+              : revisions.total < 10
+                ? " Muestra muy pequeña — patrones no fiables aún."
+                : ""}
+          </p>
+        </CardHeader>
+        <Separator />
+        <CardContent className="space-y-4 pt-4">
+          <div className="grid grid-cols-3 gap-4">
+            <MetricCell
+              label="Total revisiones"
+              value={revisions.total}
+              hint="todas en cola HITL"
+            />
+            <MetricCell
+              label="Edits (aprobado con edición)"
+              value={revisions.edits}
+              hint="modificó subject/body"
+            />
+            <MetricCell
+              label="Rechazos"
+              value={revisions.rejects}
+              hint="con categoría capturada"
+            />
+          </div>
+          {revisions.rejects > 0 ? (
+            <div>
+              <p className="mb-2 text-xs uppercase text-muted-foreground">
+                Top 5 categorías de rechazo
+              </p>
+              <table className="w-full text-sm">
+                <thead className="text-left text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="pb-2">Categoría</th>
+                    <th className="pb-2 text-right">Count</th>
+                    <th className="pb-2 text-right">% sobre rechazos</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {revisions.top_categories
+                    .filter((c) => c.count > 0)
+                    .map((c) => (
+                      <tr key={c.category} className="border-t">
+                        <td className="py-2">{c.category}</td>
+                        <td className="py-2 text-right">{c.count}</td>
+                        <td className="py-2 text-right font-medium">
+                          {pct(c.count, revisions.rejects)}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </div>
