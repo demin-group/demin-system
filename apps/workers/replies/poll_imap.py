@@ -3,35 +3,28 @@
 Lee respuestas recibidas del buzon Gmail de Gonzalo y las persiste en `replies`.
 
 Despite el nombre "poll_imap" del plan original §14, este worker usa la Gmail
-REST API (no IMAP). Mismo refresh_token que `send_gmail.py` -- pero requiere
-scope OAuth ampliado a `gmail.modify` (no solo `gmail.send`). Sin re-auth de
-Gonzalo, este worker falla con 401/403 -- bloqueador humano B7 documentado en
-§14 paso 9.
+REST API (no IMAP). Mismo refresh_token que `send_gmail.py`; requiere scope
+`gmail.readonly` o `gmail.modify` -- bloqueador humano B7 resuelto el
+2026-05-26 (Leccion 47).
 
-Flujo por run:
+Flujo por run (revision 2026-05-27 tras diagnostico de 3 bugs encadenados):
 1. fetch_active_mailbox -> refresh_token + email.
-2. GmailAdapter.list_unread_message_ids(query="is:unread newer_than:30d").
-3. Para cada msg_id:
-   a. get_message_with_headers -> headers + plain_body + threadId.
-   b. Match `in-reply-to` o `references` con `messages.gmail_message_id`.
-      Si MATCH -> insertar en `replies` (idempotente por (message_id,
-      received_at + ~5min jitter; o por header Message-Id del reply usando
-      como dedup) y mark_message_as_read.
-      Si NO MATCH -> log info y NO mark as read (email no nuestro).
-4. Reporte resumen + exit code.
-
-Idempotencia:
-- Dedup primaria: el filtro `is:unread` + marcar como leido tras insertar.
-  Si el run falla DESPUES de inserrt y ANTES de mark_as_read, en el proximo
-  run se procesara otra vez. Para evitar duplicados, hacemos check en BD:
-  `select 1 from replies where message_id=? and received_at = ?` antes de
-  insertar. La probabilidad de colision exacta de (message_id, received_at)
-  para 2 inserciones distintas es despreciable.
+2. GmailAdapter.list_unread_message_ids(query="newer_than:7d") -- SIN
+   `is:unread` (decision PM: el bot no marca leidos en Gmail, asi Gonzalo
+   conserva la senal humana "que he visto"). Dedup vive en BD.
+3. Para cada msg_id: get_message_with_headers + cascada de 3 matchers:
+   a. RFC Message-ID via In-Reply-To/References vs messages.rfc_message_id.
+   b. Subject (strippeado de Re:/Fwd:/RV:) + From == contact.email exacto.
+   c. Subject + dominio del From (60d ventana) -- otra persona del mismo
+      dominio respondio (forwards internos).
+4. Insert en replies con dedup por gmail_message_id UNIQUE (migration 17).
+5. NO marca leido en Gmail (cambio 2026-05-27).
 
 CLI:
     cd apps/workers
     uv run python -m replies.poll_imap --env prod
     uv run python -m replies.poll_imap --env dev --max-results 10 --dry-run
+    uv run python -m replies.poll_imap --env prod --query "newer_than:30d"  # backfill
 
 Exit codes:
 - 0: OK (replies procesadas o no hay nada).
@@ -116,44 +109,57 @@ def extract_matching_ids_from_headers(headers: dict[str, str]) -> list[str]:
 def find_matching_message_by_rfc_id(
     env: EnvName, rfc_message_ids: list[str]
 ) -> MessageMatch | None:
-    """Busca si alguno de los rfc_message_ids corresponde a un email que
-    enviamos. La tabla `messages` guarda `gmail_message_id` (id interno Gmail)
-    pero NO el RFC `Message-ID` con el que se envio el email.
+    """Match primario: cruza los Message-IDs RFC encontrados en
+    In-Reply-To/References del reply contra `messages.rfc_message_id`
+    (columna añadida en migration 17 + poblada por send_gmail desde
+    2026-05-27). Los valores estan ya normalizados (sin angle brackets,
+    lowercase) tanto en BD como en `rfc_message_ids` (via
+    `_normalize_message_id_header`).
 
-    Workaround: Gmail expone una API `users.messages.get` con format=metadata
-    que devuelve los headers, incluido el `Message-ID` RFC. Pero eso requiere
-    una llamada extra por mensaje.
+    Cubre los casos donde el reply viene de OTRA persona del mismo dominio
+    (forwards internos) -- el `From:` no matchea con contact.email pero el
+    In-Reply-To/References si apuntan al Message-ID que enviamos.
 
-    Alternativa: en el momento del envio (send_gmail), guardamos el
-    `Message-Id` que generamos (`make_msgid` en build_raw_message). Voy a
-    asumir que `messages.gmail_message_id` es el id interno y el RFC
-    `Message-Id` vive en `events.payload.rfc_message_id` o similar. Si no
-    existe esa columna todavia, este matching falla.
-
-    Por ahora, intento matching por subject + thread como fallback.
+    Devuelve el match mas reciente si hay varios (improbable; un mismo
+    rfc_message_id por mensaje, unico).
     """
     if not rfc_message_ids:
         return None
     with get_session(env) as s:
-        # messages.rfc_message_id no existe en schema actual (paso 7 inseta
-        # gmail_message_id que es el id interno Gmail, no el header RFC).
-        # Fallback: match por thread/subject mas adelante. Por ahora retornamos
-        # None y dejamos que el worker reporte "no match" hasta que se anada
-        # la columna.
-        _ = s  # placeholder
-    return None
+        row = s.execute(
+            text(
+                """
+                SELECT m.id::text AS message_id,
+                       m.contact_id::text AS contact_id,
+                       m.gmail_message_id
+                FROM messages m
+                WHERE m.rfc_message_id = ANY(:ids)
+                  AND m.status = 'sent'
+                ORDER BY m.sent_at DESC NULLS LAST
+                LIMIT 1
+                """
+            ),
+            {"ids": rfc_message_ids},
+        ).mappings().fetchone()
+    if not row:
+        return None
+    return MessageMatch(
+        message_id=str(row["message_id"]),
+        contact_id=str(row["contact_id"]),
+        our_gmail_message_id=str(row.get("gmail_message_id") or ""),
+    )
 
 
 def find_matching_message_by_subject_and_to(
     env: EnvName, reply_from: str, reply_subject: str
 ) -> MessageMatch | None:
-    """Fallback: match por `(contact.email, message.subject)` con strip de
-    "Re:" / "RE:" / "Fwd:" prefixes.
+    """Fallback 2: match por `(contact.email, message.subject)` con strip
+    de prefijos comunes (Re:/RE:/Fwd:/Fw:/RV: español).
 
-    `reply_from` es el header `From:` del reply (el prospecto). Lo
-    normalizamos para extraer solo el email (sin display name).
-    `reply_subject` es el subject del reply, esperamos que sea "Re: <subject
-    original>".
+    Requiere `From:` del reply == `contact.email` exacto. Para casos donde
+    responde otra persona del dominio, ver
+    `find_matching_message_by_domain_and_subject`. Para casos con
+    threading, ver `find_matching_message_by_rfc_id` (matcher primario).
     """
     from email.utils import parseaddr
 
@@ -162,12 +168,7 @@ def find_matching_message_by_subject_and_to(
     if not addr:
         return None
 
-    # Strip Re:/RE:/Fwd:/Fw: del subject.
-    subj = reply_subject.strip()
-    for prefix in ("Re:", "RE:", "re:", "Fwd:", "FWD:", "fwd:", "Fw:", "fw:"):
-        while subj.startswith(prefix):
-            subj = subj[len(prefix):].strip()
-
+    subj = _strip_reply_prefixes(reply_subject)
     if not subj:
         return None
 
@@ -199,33 +200,110 @@ def find_matching_message_by_subject_and_to(
     )
 
 
+def find_matching_message_by_domain_and_subject(
+    env: EnvName, reply_from: str, reply_subject: str
+) -> MessageMatch | None:
+    """Fallback 3: match por (dominio del From, message.subject strippeado),
+    cuando el email exacto del responder no coincide con ningun
+    contact.email. Cubre casos donde otra persona del mismo dominio
+    responde (administracion@empresa.es -> alvaro@empresa.es, o variantes
+    TLD .com vs .es del mismo nombre).
+
+    Ventana 60d para no atribuir respuestas a outreach muy antiguo. Si
+    hay >1 match, elige sent_at mas reciente.
+    """
+    from email.utils import parseaddr
+
+    _, addr = parseaddr(reply_from)
+    addr = addr.strip().lower()
+    if not addr or "@" not in addr:
+        return None
+    domain = addr.split("@", 1)[1]
+    if not domain:
+        return None
+
+    subj = _strip_reply_prefixes(reply_subject)
+    if not subj:
+        return None
+
+    with get_session(env) as s:
+        row = s.execute(
+            text(
+                """
+                SELECT m.id::text AS message_id,
+                       m.contact_id::text AS contact_id,
+                       m.gmail_message_id
+                FROM messages m
+                JOIN contacts c ON c.id = m.contact_id
+                WHERE lower(c.email) LIKE :pat
+                  AND m.subject = :subj
+                  AND m.status = 'sent'
+                  AND m.sent_at > now() - interval '60 days'
+                ORDER BY m.sent_at DESC NULLS LAST
+                LIMIT 1
+                """
+            ),
+            {"pat": f"%@{domain}", "subj": subj},
+        ).mappings().fetchone()
+
+    if not row:
+        return None
+    return MessageMatch(
+        message_id=str(row["message_id"]),
+        contact_id=str(row["contact_id"]),
+        our_gmail_message_id=str(row.get("gmail_message_id") or ""),
+    )
+
+
+# Prefijos de reply/forward que strippeamos del subject para matching.
+# Incluye RV/R (reenvío español), Fwd/Fw (forward ingles), Re/RE (reply).
+_REPLY_PREFIXES = (
+    "Re:", "RE:", "re:",
+    "Fwd:", "FWD:", "fwd:",
+    "Fw:", "FW:", "fw:",
+    "RV:", "Rv:", "rv:",
+    "R:", "r:",
+)
+
+
+def _strip_reply_prefixes(subject: str) -> str:
+    """Strip iterativo de prefijos reply/forward. Soporta "Re: RV:"
+    encadenados (subject reenviado de un reply)."""
+    subj = subject.strip()
+    changed = True
+    while changed:
+        changed = False
+        for prefix in _REPLY_PREFIXES:
+            if subj.startswith(prefix):
+                subj = subj[len(prefix):].strip()
+                changed = True
+                break
+    return subj
+
+
 def insert_reply_idempotent(
     env: EnvName,
     *,
     message_match: MessageMatch,
+    gmail_message_id: str,
     received_at: datetime,
     subject: str,
     body: str,
 ) -> str | None:
-    """Inserta en `replies`. Idempotente por (message_id, received_at).
-    Devuelve uuid del reply o None si ya existia.
+    """Inserta en `replies`. Dedup primario por `gmail_message_id` (UNIQUE
+    desde migration 17). Si ya existe -> skip silencioso. Devuelve uuid
+    del reply o None si ya existia.
     """
     with get_session(env) as s:
-        # Check existencia previa.
+        # Dedup primario por gmail_message_id.
         exists = s.execute(
-            text(
-                """
-                SELECT id::text FROM replies
-                WHERE message_id = cast(:mid as uuid)
-                  AND received_at = :received_at
-                """
-            ),
-            {"mid": message_match.message_id, "received_at": received_at},
+            text("SELECT id::text FROM replies WHERE gmail_message_id = :gmid"),
+            {"gmid": gmail_message_id},
         ).fetchone()
         if exists:
             logger.info(
-                "reply_dedup msg=%s received_at=%s already inserted as %s",
-                message_match.message_id, received_at, exists[0],
+                "reply_dedup gmail_id=%s already inserted as %s",
+                gmail_message_id, exists[0],
             )
             return None
 
@@ -234,10 +312,10 @@ def insert_reply_idempotent(
                 """
                 INSERT INTO replies (
                     message_id, contact_id, received_at,
-                    raw_subject, raw_body
+                    raw_subject, raw_body, gmail_message_id
                 ) VALUES (
                     cast(:mid as uuid), cast(:cid as uuid), :received_at,
-                    :subject, :body
+                    :subject, :body, :gmid
                 )
                 RETURNING id::text
                 """
@@ -247,7 +325,8 @@ def insert_reply_idempotent(
                 "cid": message_match.contact_id,
                 "received_at": received_at,
                 "subject": subject[:1000] if subject else "",
-                "body": body[:32000] if body else "",  # cap defensivo
+                "body": body[:32000] if body else "",
+                "gmid": gmail_message_id,
             },
         )
         new_id = ins.fetchone()
@@ -258,14 +337,28 @@ def insert_reply_idempotent(
 def run_poll(
     env: EnvName,
     *,
-    query: str = "is:unread newer_than:30d",
-    max_results: int = 50,
+    query: str = "newer_than:7d",
+    max_results: int = 100,
     dry_run: bool = False,
 ) -> dict[str, int]:
     """Ejecuta una pasada de polling.
 
-    Returns dict con metricas: {listed, matched, inserted, dedup, errors,
-    skipped_no_match}.
+    Query default `newer_than:7d` (sin `is:unread`) -- decision PM 2026-05-27:
+    el bot NO marca leidos en Gmail (Gonzalo conserva la senal humana
+    "que he visto"). Dedup primario por `replies.gmail_message_id UNIQUE`
+    impide doble insert si el mismo mensaje aparece en runs sucesivos.
+
+    Matcher en 3 niveles:
+    1. RFC Message-ID via In-Reply-To/References vs messages.rfc_message_id
+       (cubre forwards internos donde el From: del reply no coincide con
+       contact.email).
+    2. Subject + From exacto (caso normal donde responde la misma persona
+       que recibio el outreach).
+    3. Subject + dominio del From (60d ventana) -- otra persona del mismo
+       dominio respondio. Log explicito para auditoria.
+
+    Returns dict con metricas: {listed, matched_rfc, matched_subject,
+    matched_domain, inserted, dedup, errors, skipped_no_match}.
     """
     mailbox = fetch_active_mailbox(env)
     if mailbox is None:
@@ -273,7 +366,9 @@ def run_poll(
 
     stats = {
         "listed": 0,
-        "matched": 0,
+        "matched_rfc": 0,
+        "matched_subject": 0,
+        "matched_domain": 0,
         "inserted": 0,
         "dedup": 0,
         "errors": 0,
@@ -298,35 +393,49 @@ def run_poll(
                 continue
 
             headers = detail["headers"]
+            from_addr = headers.get("from", "")
+            subj_raw = headers.get("subject", "")
             rfc_ids = extract_matching_ids_from_headers(headers)
 
-            # Primer intento: por header RFC.
+            # Skip emails que enviamos NOSOTROS (gonzalo.perez@...). Gmail
+            # devuelve sent items en la query newer_than sin is:unread.
+            if mailbox.email.lower() in from_addr.lower():
+                continue
+
+            # Cascada de 3 matchers.
             match = find_matching_message_by_rfc_id(env, rfc_ids)
-            # Fallback: por (from, subject).
+            match_kind = "rfc" if match else None
             if match is None:
                 match = find_matching_message_by_subject_and_to(
-                    env,
-                    reply_from=headers.get("from", ""),
-                    reply_subject=headers.get("subject", ""),
+                    env, reply_from=from_addr, reply_subject=subj_raw,
                 )
+                match_kind = "subject" if match else None
+            if match is None:
+                match = find_matching_message_by_domain_and_subject(
+                    env, reply_from=from_addr, reply_subject=subj_raw,
+                )
+                match_kind = "domain" if match else None
 
             if match is None:
                 stats["skipped_no_match"] += 1
                 logger.info(
                     "no_match msg_id=%s from=%r subject=%r in_reply_to=%r",
-                    msg_id,
-                    headers.get("from", "")[:80],
-                    headers.get("subject", "")[:80],
+                    msg_id, from_addr[:80], subj_raw[:80],
                     headers.get("in-reply-to", "")[:80],
                 )
                 continue
 
-            stats["matched"] += 1
+            stats["matched_" + match_kind] += 1
+            if match_kind == "domain":
+                logger.info(
+                    "matched_by=domain_fallback contact_msg=%s reply_from=%s subject=%r",
+                    match.message_id, from_addr[:80], subj_raw[:80],
+                )
 
             if dry_run:
                 logger.info(
-                    "DRY_RUN match msg_id=%s -> our_message_id=%s contact_id=%s",
-                    msg_id, match.message_id, match.contact_id,
+                    "DRY_RUN match[%s] msg_id=%s -> our_message_id=%s contact_id=%s",
+                    match_kind, msg_id, match.message_id, match.contact_id,
                 )
                 continue
 
@@ -334,8 +443,9 @@ def run_poll(
                 reply_id = insert_reply_idempotent(
                     env,
                     message_match=match,
+                    gmail_message_id=msg_id,
                     received_at=detail["internalDate"],
-                    subject=headers.get("subject", ""),
+                    subject=subj_raw,
                     body=detail.get("plain_body") or "",
                 )
             except Exception as e:
@@ -347,14 +457,9 @@ def run_poll(
                 stats["dedup"] += 1
             else:
                 stats["inserted"] += 1
-
-            # Mark as read solo tras insert OK (o dedup confirmado).
-            try:
-                g.mark_message_as_read(msg_id)
-            except GmailError as e:
-                logger.warning(
-                    "mark_as_read failed msg_id=%s (reply guardado pero "
-                    "siguiente run lo re-procesara): %s", msg_id, e
+                logger.info(
+                    "reply_inserted id=%s matched_by=%s msg_id=%s contact_msg=%s",
+                    reply_id, match_kind, msg_id, match.message_id,
                 )
 
     return stats
@@ -366,10 +471,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--env", choices=("dev", "prod"), required=True)
     p.add_argument(
-        "--query", default="is:unread newer_than:30d",
-        help="Gmail search query. Default lista unreads del ultimo mes.",
+        "--query", default="newer_than:7d",
+        help="Gmail search query. Default: ultimos 7 dias (sin is:unread, "
+             "decision PM 2026-05-27).",
     )
-    p.add_argument("--max-results", type=int, default=50)
+    p.add_argument("--max-results", type=int, default=100)
     p.add_argument("--dry-run", action="store_true",
                    help="Lista + match pero NO inserta ni mark as read.")
     args = p.parse_args(argv)
@@ -400,7 +506,10 @@ def main(argv: list[str] | None = None) -> int:
         return 4
 
     print(
-        f"FIN poll_imap  listed={stats['listed']}  matched={stats['matched']}  "
+        f"FIN poll_imap  listed={stats['listed']}  "
+        f"matched_rfc={stats['matched_rfc']}  "
+        f"matched_subject={stats['matched_subject']}  "
+        f"matched_domain={stats['matched_domain']}  "
         f"inserted={stats['inserted']}  dedup={stats['dedup']}  "
         f"skipped={stats['skipped_no_match']}  errors={stats['errors']}"
     )

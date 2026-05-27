@@ -96,7 +96,13 @@ class SendResult:
     """Resultado de `send_email`. `gmail_message_id` y `sent_at` poblados
     en exito (200). `error` poblado en fallo no-auth (4xx no-401, o 5xx
     tras retries) para que el caller persista `status='failed'` o
-    `status='bounced'` segun corresponda."""
+    `status='bounced'` segun corresponda.
+
+    `rfc_message_id`: el header RFC 5322 Message-ID que generamos en el
+    raw enviado (`make_msgid` con SENDING_DOMAIN). Persistir en
+    `messages.rfc_message_id` para que poll_imap pueda matchear los replies
+    via In-Reply-To / References (caso comun: forwards internos donde el
+    `From:` del reply no coincide con el contact.email original)."""
 
     success: bool
     gmail_message_id: str | None
@@ -104,6 +110,7 @@ class SendResult:
     error: str | None
     http_status: int | None
     raw_response: dict[str, Any] | None
+    rfc_message_id: str | None = None
 
 
 # --- Adapter ---------------------------------------------------------------
@@ -194,7 +201,7 @@ class GmailAdapter:
         usa para hilos en follow-ups (D+4/D+10) — mantiene el thread agrupado
         en Gmail/Outlook del destinatario."""
 
-        raw = self._build_raw_message(
+        raw, rfc_message_id = self._build_raw_message(
             to=to, subject=subject, body=body, in_reply_to=in_reply_to
         )
 
@@ -208,8 +215,8 @@ class GmailAdapter:
         if status == 200:
             gmail_id = body_resp.get("id") if isinstance(body_resp, dict) else None
             logger.info(
-                "gmail_send ok from=%s to=%s subject=%r gmail_id=%s elapsed_ms=%d",
-                self._from_email, to, subject[:40], gmail_id, elapsed_ms,
+                "gmail_send ok from=%s to=%s subject=%r gmail_id=%s rfc_id=%s elapsed_ms=%d",
+                self._from_email, to, subject[:40], gmail_id, rfc_message_id, elapsed_ms,
             )
             return SendResult(
                 success=True,
@@ -218,6 +225,7 @@ class GmailAdapter:
                 error=None,
                 http_status=200,
                 raw_response=body_resp,
+                rfc_message_id=rfc_message_id,
             )
 
         # 4xx no-auth: error sincrono. El caller decide si tratar como
@@ -234,23 +242,33 @@ class GmailAdapter:
             error=err_msg,
             http_status=status,
             raw_response=body_resp,
+            rfc_message_id=None,
         )
 
     # --- Construccion del mensaje RFC 2822 --------------------------------
 
     def _build_raw_message(
         self, *, to: str, subject: str, body: str, in_reply_to: str | None
-    ) -> str:
+    ) -> tuple[str, str]:
+        """Construye el mensaje RFC 2822 codificado base64url. Devuelve
+        `(raw_b64url, rfc_message_id)` -- el segundo es el header
+        Message-ID que generamos via `make_msgid(SENDING_DOMAIN)`, que
+        sera el valor al que apunten los In-Reply-To/References de los
+        replies. Persistir en messages.rfc_message_id permite a poll_imap
+        cruzar replies con su message origen sin depender del `From:`
+        del reply (forwards internos rompen ese matching)."""
+        rfc_message_id = make_msgid(domain=self._sending_domain)
         msg = MIMEText(body, _subtype="plain", _charset="utf-8")
         msg["From"] = f'"{self._from_display}" <{self._from_email}>'
         msg["To"] = to
         msg["Subject"] = subject
         msg["Date"] = formatdate(localtime=True)
-        msg["Message-ID"] = make_msgid(domain=self._sending_domain)
+        msg["Message-ID"] = rfc_message_id
         if in_reply_to:
             msg["In-Reply-To"] = in_reply_to
             msg["References"] = in_reply_to
-        return base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii").rstrip("=")
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii").rstrip("=")
+        return raw, rfc_message_id
 
     # --- OAuth refresh access_token --------------------------------------
 

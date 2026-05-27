@@ -328,6 +328,16 @@ def fetch_approved_messages(env: EnvName, limit: int) -> list[PendingMessage]:
     ]
 
 
+def _normalize_rfc_id(raw: str | None) -> str | None:
+    """Normaliza un RFC Message-ID para consistencia con
+    poll_imap._normalize_message_id_header: strip angle brackets +
+    lowercase. Persistimos asi para que el matching contra
+    In-Reply-To / References (que tambien normaliza) sea directo."""
+    if not raw:
+        return None
+    return raw.strip().strip("<>").lower()
+
+
 def persist_send_success(
     env: EnvName,
     msg: PendingMessage,
@@ -344,7 +354,8 @@ def persist_send_success(
                 SET status = 'sent',
                     mailbox_id = cast(:mid as uuid),
                     sent_at = :sat,
-                    gmail_message_id = :gmid
+                    gmail_message_id = :gmid,
+                    rfc_message_id = :rfcid
                 WHERE id = cast(:mid_msg as uuid)
                 """
             ),
@@ -353,6 +364,7 @@ def persist_send_success(
                 "mid_msg": msg.message_id,
                 "sat": result.sent_at,
                 "gmid": result.gmail_message_id,
+                "rfcid": _normalize_rfc_id(result.rfc_message_id),
             },
         )
         s.execute(
@@ -368,6 +380,7 @@ def persist_send_success(
                 "cid": msg.contact_id,
                 "payload": json.dumps({
                     "gmail_message_id": result.gmail_message_id,
+                    "rfc_message_id": result.rfc_message_id,
                     "to": msg.contact_email,
                     "subject": msg.subject,
                     "step_index": msg.step_index,

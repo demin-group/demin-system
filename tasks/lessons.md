@@ -1447,6 +1447,67 @@ Las empresas T4 sin web SÍ tienen dominio comercial activo (1/4 al menos), pero
 
 ---
 
+## 2026-05-27 — Lección 54: tres bugs encadenados en poll_imap producían 0% reply rate aunque hubiera respuestas reales en bandeja
+
+> **Nota numeración:** lecciones 51-53 las añadirá Sesión 1 paralela (Palanca B + auto-switch deploy). Si quedan huecos al terminar ambas sesiones, ajustar.
+
+**Contexto:** tras desbloqueo OAuth B7 (L47 26-may), dashboard `/metrics` seguía mostrando REPLY RATE 0.00% pese a 4 respuestas reales en la bandeja de Gonzalo (Cabbsa, Cador, Umavial, Oliveros). PM detectó que olía mal y pidió diagnóstico. Hipótesis inicial: `poll_imap` filtra por `is:unread` y Gonzalo marca leído al abrir → race condition. Esa hipótesis resultó parcial — había **3 bugs encadenados**, cualquiera bastaba por sí solo:
+
+1. **Bug B (matching demasiado estricto, el más grave).** `find_matching_message_by_rfc_id` estaba stubbed devolviendo `None` siempre porque `messages.rfc_message_id` no existía en schema. El fallback subject+from exigía `contact.email == reply.from` exacto, pero los 4 casos reales eran forwards internos (administracion@umavial.es → amartin@umavial.es, info@grupooliveros.com → juanvalle@grupooliveros.com) o variantes TLD (.com vs .es para Cabbsa). 0/4 matcheaban.
+2. **Bug A (is:unread + race humana).** Worker corre cada 5 min; Gonzalo abre los emails como humano y se marcan leídos → el siguiente run no los ve. Para Umavial/Oliveros, recibidos ANTES del desbloqueo OAuth, esto era 100% determinista: nunca se vieron.
+3. **Bug C (cap max_results=50 sin paginación).** Bandeja tenía 57+ unread totales → 7+ quedaban fuera de cada poll. No fue el bug bloqueante, pero hubo que subirlo a 500 para el backfill.
+
+**Corrección humana / decisión PM:**
+- P0a: persistir RFC Message-ID en `messages.rfc_message_id` (migration 17 + cambios en `gmail_adapter.SendResult` + `send_gmail.persist_send_success`). Matcher primario en cascada.
+- P0b: query default `newer_than:7d` sin `is:unread`. Dedup por `replies.gmail_message_id UNIQUE`. **El bot ya NO marca leídos en Gmail** — Gonzalo conserva la señal humana "qué he visto y qué no".
+- P1a: fallback adicional por `(dominio del From, subject strippeado, 60d)` cuando email exacto no matchea. Log explícito `matched_by=domain_fallback` para auditoría.
+- P1b: añadir prefijos `RV:`/`R:` (reenvío español) a strip iterativo de subject. Antes solo había Re:/Fwd:/Fw:.
+
+**Regla resultante:**
+- **Cuando una columna de matching es central, persistirla desde el momento del envío.** No dejar matchers stubbed con comentarios "esto requiere columna nueva" — fixearlo en la misma sesión o documentar como blocker explícito. La columna `messages.rfc_message_id` debería haberse añadido cuando se diseñó el flujo de threading, no 3 semanas después.
+- **Los matchers de identidad en respuestas comerciales DEBEN tolerar forwards internos.** Las empresas redirigen emails a la persona competente (info@ → ventas@, administracion@ → comercial@). Exigir `contact.email == reply.from` rompe el matching en mayoría de casos reales. Cascada de 3 niveles (RFC Message-ID → email exacto → dominio + subject) cubre 3/4 de los casos observados.
+- **Cualquier `is:unread` que dependa de que el bot marque leídos es un anti-patrón cuando hay humanos lectores en el medio.** Dedup en BD por id estable (gmail_message_id), no por flag de estado en Gmail. Permitir que el humano mantenga su propia señal de lectura.
+- **Numeración / regex de "Re:" debe incluir variantes locales.** "RV:" (español), "Sv:" (noruego/sueco), "AW:" (alemán). Para outreach en mercados no anglo, los prefijos en inglés no bastan.
+
+**Aplicado en:**
+- `infra/supabase/migrations/20260527113000_17_rfc_message_id_and_replies_dedup.sql`: añade `messages.rfc_message_id` + `replies.gmail_message_id UNIQUE`.
+- `apps/workers/shared/gmail_adapter.py`: `SendResult.rfc_message_id` + `_build_raw_message` devuelve tupla `(raw, rfc_id)`.
+- `apps/workers/outreach/send_gmail.py`: `_normalize_rfc_id` (strip brackets + lower) + persiste en `messages.rfc_message_id` + lo añade al payload del evento `message_sent`.
+- `apps/workers/replies/poll_imap.py`: 3 matchers en cascada, query default `newer_than:7d`, dedup por `gmail_message_id`, eliminado `mark_message_as_read`, skip self-sent emails del mailbox.
+- `apps/workers/tests/test_poll_imap_matchers.py`: 23 tests unitarios (strip RV/Re, normalize Message-ID, extract In-Reply-To/References, normalize_rfc_id espejo).
+
+**Resultado del backfill productivo (newer_than:7d max_results=500):**
+- 4 respuestas reales en bandeja → **2 entraron a `replies` table automáticamente**:
+  - **Umavial** (amartin@umavial.es, "RV: Demoliciones interiores...") → `interesado` ✓. Matched_by=domain_fallback (contact=administracion@umavial.es).
+  - **Oliveros** (juanvalle@grupooliveros.com, "RE: Demolición interior...") → `pide_info` ✓. Matched_by=domain_fallback (contact=info@grupooliveros.com).
+- **2 no entraron y quedan para gestión manual de Gonzalo**:
+  - **Cabbsa** (alvaro.lopez@cabbsa.es): contact existe pero con TLD distinto (`alvaro.lopez@cabbsa.com`). El domain fallback solo matchea dominio exacto, no variantes TLD. Cubrirlo requeriría heurística "misma raíz de marca" no autorizada por PM.
+  - **Cador** (ymartinez@grupocador.com): outreach se envió a `jflores@cador.es` (dominio distinto sin relación obvia "grupocador" ↔ "cador"). Reply sin In-Reply-To ni References. Sin matching posible.
+- Reply rate `/metrics` rates_7d: **0.00% → 6.67%** (2 replies / 30 sent).
+
+**Mitigación pendiente:** para mensajes nuevos enviados desde 2026-05-27 12:00 UTC el matching primario (RFC Message-ID) cubrirá automáticamente los forwards internos sin depender del domain fallback. Los 30 messages enviados antes del fix tienen `rfc_message_id IS NULL` — sus replies futuros dependerán del domain fallback (limitación conocida; aceptable porque la cohorte es pequeña).
+
+**Trigger próxima sesión:** si PM ve que sigue faltando cobertura tras 1 semana de envíos nuevos, evaluar (a) heurística raíz-de-marca para casos tipo Cabbsa, (b) paginación poll_imap si `listed=500` se alcanza regularmente. P3 matching por `gmail_thread_id` queda como mejora arquitectónica posterior.
+
+---
+
+## 2026-05-27 — Lección 55: PM declinó añadir heurística de matching cross-TLD por riesgo de falsos positivos a baja muestra
+
+**Contexto:** tras aplicar fixes P0+P1 a `poll_imap` (L54), 2 de 4 respuestas históricas no se recuperaron. Cabbsa especialmente: contacto en BD `alvaro.lopez@cabbsa.com`, respuesta llegó de `alvaro.lopez@cabbsa.es`. Mismo nombre, misma raíz de dominio, distinto TLD. Code propuso heurística de "raíz de marca" como mejora opcional.
+
+**Decisión PM:** NO añadir la heurística. Razones:
+
+- 32 envíos productivos solo, base muestral pequeña para evaluar riesgo real de falsos positivos.
+- Cabbsa es 1 caso, no patrón.
+- Falsos positivos en matching de replies son peores que perder un reply: asocian una respuesta a un mensaje equivocado, corrompiendo señal de aprendizaje y posibles re-engages.
+- Gonzalo gestiona Cabbsa manualmente sin coste significativo.
+
+**Reevaluación futura:** si en próximas 2-3 semanas con ≥100 envíos emergen ≥5 casos similares (TLD switch, sub-marca, etc.), se reevaluará la heurística con datos.
+
+**Aplicado en:** ninguno. Decisión PM registrada para auditoría futura.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
