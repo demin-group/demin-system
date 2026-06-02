@@ -1447,9 +1447,15 @@ Las empresas T4 sin web SÍ tienen dominio comercial activo (1/4 al menos), pero
 
 ---
 
+## 2026-05-27 — Lecciones 51-53: anuladas
+
+Los números L51, L52 y L53 quedaron sin uso. Estaban reservados para la sesión de despliegue del worker auto_switch al VPS (Sesión 1 del 2026-05-27), que fue CANCELADA por decisión PM tras evaluar coste/beneficio (ver entrada en §19 de todo.md: el worker solo automatiza el toggle hitl_mode, y pulsar el botón manual en /settings es trivial). El código del worker + UI + safeguards permanece en el repo, re-desplegable en el futuro. La numeración continúa en L54.
+
+---
+
 ## 2026-05-27 — Lección 54: tres bugs encadenados en poll_imap producían 0% reply rate aunque hubiera respuestas reales en bandeja
 
-> **Nota numeración:** lecciones 51-53 las añadirá Sesión 1 paralela (Palanca B + auto-switch deploy). Si quedan huecos al terminar ambas sesiones, ajustar.
+> **Nota numeración:** lecciones 51-53 quedaron anuladas — ver entrada "Lecciones 51-53: anuladas" arriba. La numeración salta de L50 a L54.
 
 **Contexto:** tras desbloqueo OAuth B7 (L47 26-may), dashboard `/metrics` seguía mostrando REPLY RATE 0.00% pese a 4 respuestas reales en la bandeja de Gonzalo (Cabbsa, Cador, Umavial, Oliveros). PM detectó que olía mal y pidió diagnóstico. Hipótesis inicial: `poll_imap` filtra por `is:unread` y Gonzalo marca leído al abrir → race condition. Esa hipótesis resultó parcial — había **3 bugs encadenados**, cualquiera bastaba por sí solo:
 
@@ -1505,6 +1511,20 @@ Las empresas T4 sin web SÍ tienen dominio comercial activo (1/4 al menos), pero
 **Reevaluación futura:** si en próximas 2-3 semanas con ≥100 envíos emergen ≥5 casos similares (TLD switch, sub-marca, etc.), se reevaluará la heurística con datos.
 
 **Aplicado en:** ninguno. Decisión PM registrada para auditoría futura.
+
+---
+
+## 2026-05-27 — Lección 56: universo Sabi actual es 100% Madrid — ampliación requiere dump nuevo
+
+**Contexto:** PM planteó ampliar a provincias limitrofes. Query confirmó: 5.578 empresas en `companies` 100% Comunidad de Madrid (5 localidades, todas Madrid; sin campo `provincia`). El Excel Sabi original se filtró por Madrid; otras provincias nunca estuvieron.
+
+**Conclusión:** no se puede "filtrar el Excel por provincias" — no hay otras provincias en él. Ampliar requiere dump nuevo (Palanca C, detallada en §20).
+
+**Decisiones Gonzalo:** radio Madrid+Guadalajara+Toledo+Ávila+Segovia+Cuenca; sin extra desplazamiento; sin cambio plazos; correo mismo tono con geografía neutralizada.
+
+**Pre-requisito:** PM tiene acceso Sabi, extraerá dump cuando pool actual se agote. NO ejecutado ahora (hay colchón tras 191 rescatadas Palanca B).
+
+**Aplicado en:** documentación §20. Ejecución futura.
 
 ---
 

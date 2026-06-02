@@ -2417,14 +2417,35 @@ Esta lista la mantenemos para que cuando PM pregunte "¿qué más podemos hacer 
 - **Tiempo Code:** 30-60 minutos.
 - **Cuándo accionar:** cuando Hunter retry T1+T2 + Opción C T4 no hayan dado suficiente material. Es la siguiente palanca natural antes de LinkedIn.
 
-### Palanca C — Importar nuevo dump de Sabi con criterios distintos
+### Palanca C — Ampliación geográfica a provincias limitrofes (dump nuevo de Sabi)
 
-- **Qué hace:** pedir a Sabi un export nuevo ampliando CNAEs adyacentes (mantenimiento integral, gestiones de patrimonio, etc.) o ampliando provincias limitrofes (Toledo, Guadalajara, Ávila, Segovia).
-- **Coste:** acceso humano a Sabi (no es coste de software).
-- **Ganancia esperada:** depende del criterio. Conservador: +2.000-3.000 empresas en bruto, ~9% fit ≈ +180-270 nuevas fit, ~80-150 contactos tras pipeline.
-- **Riesgo principal:** ampliar geografía puede romper la propuesta de valor "somos de Madrid, llegamos rápido". Discutir con Gonzalo antes.
-- **Tiempo:** trabajo humano de extraer + nuevo ingest Code.
-- **Cuándo accionar:** si tras Phantombuster + clasificación pendientes aún se necesita más volumen.
+**Estado:** documentada, lista para ejecutar cuando el pool Madrid se agote. Requiere acción humana previa (extraer dump). Confirmada viable por Gonzalo (radio) y PM (acceso a Sabi).
+
+**Qué hace:** amplía prospección más allá de la Comunidad de Madrid, a provincias dentro del radio de desplazamiento de DEMIN.
+
+**Decisiones de Gonzalo confirmadas (2026-05-27):**
+- Radio: Madrid + Guadalajara + Toledo + Ávila + Segovia + Cuenca (hasta ~160 km).
+- Precio: NO cobra extra por desplazamiento. Correo mantiene "precios claros" sin matices.
+- Plazos: NO cambian según distancia. Correo mantiene mensaje de rapidez sin matices.
+- Tono: el mismo de siempre. Única adaptación: NEUTRALIZAR la geografía — el correo NO debe decir "Madrid" cuando el destinatario está fuera. Recomendación: prompt habla de "vuestras obras"/"vuestras reformas" sin localizar, sirve para cualquier provincia.
+
+**Pre-requisito humano (bloqueante):** PM (Alberto) extrae dump de Sabi con specs:
+- Provincias: Guadalajara, Toledo, Ávila, Segovia, Cuenca. NO incluir Madrid (ya en BD).
+- CNAE: mismos del Excel original Madrid. Buscar en el original si no se recuerdan.
+- Tamaño: mismo rango facturación (sistema filtra <500k€ y >20M€ después).
+- Columnas: NIF, Nombre, Localidad, Provincia (esta vez SÍ), Descripción, Web, Facturación último año, Facturación año anterior.
+- Formato: .xlsx, MISMA estructura que el original para que `ingest_sabi.py` lo parsee sin reescritura.
+- Guardar en `docs/` como `sabi_limitrofes_AAAA-MM.xlsx`.
+
+**Nota técnica:** `companies` no tiene campo `provincia` hoy, solo `localidad`. Antes de ingestar: migration añadiendo `provincia` + adaptar `ingest_sabi.py`.
+
+**Volumen esperado:** 2.000-3.500 empresas brutas → ~9% fit (~180-315) → con web ~70% + Hunter ~30% → ~40-65 contactos accionables.
+
+**Coste ejecución:** classify Haiku ~$2-3 + research ~$1-2 + Hunter (dentro de cap) + drafts ~$1-2 = ~$5-8 LLM + 1-2 sesiones Code.
+
+**Pasos:** 1) migration provincia. 2) adaptar ingest_sabi. 3) ingest. 4) classify. 5) research+Hunter. 6) neutralizar geografía en prompt. 7) drafts.
+
+**Cuándo accionar:** cuando pool vírgenes Madrid (incl. 191 rescatadas Palanca B) baje de ~30 y PM quiera más volumen. Palanca de crecimiento natural antes de LinkedIn/Phantombuster (Palanca A, $60/mes).
 
 ### Palanca D — Activar T4 con Opción C ⚠️ DESCARTADA EMPÍRICAMENTE (L49)
 
