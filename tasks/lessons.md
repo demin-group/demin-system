@@ -1548,7 +1548,7 @@ Los números L51, L52 y L53 quedaron sin uso. Estaban reservados para la sesión
 
 **Contexto:** 33 de 48 T2 fit (incluidas las 5 mayores, 13-19M€) estaban fuera del pipeline con `ia_fit_reason='no_contactos_encontrados'`. Diagnóstico previo asumía "Hunter no encontró nada". La realidad tiene dos partes: (a) Hunter tiene cobertura pobre de PYME constructora española (8 de 9 dominios reintentados devolvieron 0), y (b) cuando encuentra algo genérico o nominal-sin-cargo, D20 lo rechaza para T2 (`corporativo_pequeno` y A3 no aceptables).
 
-**Sesión de recuperación (números):** scraper de emails visibles en web propia (`pipeline/scrape_emails.py`, antes stub D17): 22 de 31 scrapeadas con email (71%), 25 contacts insertados `email_source='web_scrape'`, $0. Hunter retry dirigido sobre las 9 restantes: 0 recuperadas (9 calls). Drafts: 22/22 OK validados ($0.43). Quedan 11 para búsqueda manual.
+**Sesión de recuperación (números):** scraper de emails visibles en web propia (`pipeline/scrape_emails.py`, antes stub D17): 22 de 31 scrapeadas con email (71%), 25 contacts insertados `email_source='web_scrape'`, $0. Hunter retry dirigido sobre las 9 restantes: 0 directas (9 calls), pero 1 recuperada vía override PM posterior (Brillas Agusti, ver abajo). **Total: 23 de 33 recuperadas.** Drafts: 23/23 OK validados ($0.45). Quedan 10 pendientes (documentadas en §20, decisión PM: no buscar a mano ahora).
 
 **Override D20 (decisión PM 2026-06-03, alcance limitado):** para `web_scrape` en T2 se aceptan buzones corporativos (info@, obras@, administracion@...) — un buzón real publicado en la web propia de una constructora de 15M€ es mejor que excluirla. D20 sigue intacta para el flujo Hunter. La whitelist NEGATIVA (rrhh@, prensa@, noreply@...) se respeta siempre.
 
@@ -1557,7 +1557,7 @@ Los números L51, L52 y L53 quedaron sin uso. Estaban reservados para la sesión
 - Si la web redirige a un dominio registrable distinto (logistikservice.es → logistik.es), el filtro estricto de dominio propio descarta los emails del dominio destino. Conservador a propósito (anti-terceros); esos casos van a manual.
 - Emails de la web solo se persisten si aparecen literalmente (L49 sigue: cero permutación/invención).
 
-**Pendiente decisión PM:** Hunter encontró `ragusti@brillasagusti.com` (apellido coincide con razón social BRILLAS AGUSTI) pero D20 lo descarta (sin nombre/cargo, regla 7). NO insertado. Si PM lo aprueba, insertar manualmente como nominal.
+**Resuelto mismo día (override PM):** Hunter encontró `ragusti@brillasagusti.com` (apellido coincide con razón social BRILLAS AGUSTI) pero D20 lo descartaba (sin nombre/cargo, regla 7). PM aprobó insertarlo: para PYME constructora española, un email con apellido coincidente con la razón social es señal válida de decisor aunque no tenga cargo confirmado. Insertado como `nominal`/priority 4, `email_source='hunter'`, `ia_fit_reason='recuperada_hunter_override_pm'`. Criterio reutilizable en futuros filtrados D20 análogos (siempre con aprobación PM explícita, no automatizar).
 
 **Aplicado en:** `pipeline/scrape_emails.py` (worker real + 7 tests), `scripts/hunter_retry_nocontacts.py`, 25 contacts + 22 drafts en prod, §19 todo.md.
 

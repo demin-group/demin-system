@@ -2420,6 +2420,8 @@ Sesión dirigida por PM para recuperar las 33 T2 fit sin ningún contact (las 5 
 
 **Pendientes humanos:** (1) Gonzalo: aprobar 22 drafts T2 en `/approval-queue` — OJO L57: si alguna es cliente existente, rechazar con categoría que marque opt-out. (2) PM: decisión `ragusti@brillasagusti.com`. (3) PM/Gonzalo: lista manual 11 de arriba.
 
+**Continuación misma sesión (decisiones PM):** (a) `ragusti@brillasagusti.com` APROBADO e insertado (override D20 puntual, nominal/4, source hunter) + draft generado ($0.02) → **cola HITL 74** (23 T2). (b) Las 10 restantes quedan PENDIENTES sin búsqueda manual ahora — documentadas en §20 "T2 grandes pendientes de email" con opciones futuras (manual / Palanca A LinkedIn / re-scrape webs caídas). L58 actualizada.
+
 ---
 
 ## §20 — Palancas futuras de expansión del pool
@@ -2479,6 +2481,24 @@ Esta lista la mantenemos para que cuando PM pregunte "¿qué más podemos hacer 
 - **Estado:** activada en sesión 2026-05-26 → **hit rate 0% sobre sample 35 empresas**. Providers SMTP en 2026 bloquean RCPT TO probing agresivo. No es viable in-house para PYME ES sin web.
 - **Código queda en repo** (`pipeline/option_c_t4.py` + sub-módulos) como infra reusable para sectores futuros donde SMTP sea más permisivo, pero no reintentar para este universo.
 - **Alternativa de validación email externalizada**: si en algún momento PM quiere validar candidatos email a escala, considerar MillionVerifier API (~$0.0008/probe) en lugar de SMTP probe in-house.
+
+### T2 grandes pendientes de email (recuperación manual futura)
+
+10 empresas T2 fit (sweet spot DEMIN, 5-19M€) sin email tras scraper + Hunter (sesión 2026-06-03, L58). Decisión PM 2026-06-03: se dejan PENDIENTES, no buscar a mano ahora. Por facturación desc:
+
+- AZMER (19,4M€) — scraper no encontró email
+- GC BUILDING (16,9M€) — web SPA (requiere JS)
+- OBRAS IMPALA (16,7M€) — scraper no encontró
+- SANBRO (14M€) — web caída
+- CUSHMAN D&B (8,8M€) — dominio global multinacional, requiere email específico filial Spain
+- CONSULTORES DE PROYECTOS (7,5M€) — web devuelve 500
+- MARBELLA (5,8M€) — web es houzz.es (directorio)
+- LOGISTIK (5,7M€) — redirect a logistik.es
+- URBINSA (5,7M€) — web caída
+- EDIAR (5,6M€) — scraper no encontró
+- (Brillas Agusti RESUELTA esta sesión vía override PM de `ragusti@`, ya no cuenta)
+
+Opciones futuras para estas: (a) búsqueda manual PM/Gonzalo en sus webs cuando estén operativas, (b) LinkedIn/Phantombuster Palanca A las cubriría bien (son empresas grandes con decisores identificables), (c) reintentar scraper más adelante para las de web caída (Sanbro, Urbinsa) por si vuelven online.
 
 ---
 
