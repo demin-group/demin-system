@@ -2399,6 +2399,29 @@ Sin schedule programado (correcto — 4 condiciones rojas).
 
 ---
 
+### 2026-06-03 — Recuperación T2 sin contactos: scraper web + Hunter retry + 22 drafts (L58)
+
+Sesión dirigida por PM para recuperar las 33 T2 fit sin ningún contact (las 5 mayores 13-19M€ incluidas). Embudo previo: 48 T2 fit → 14 con primary activo → 33 con cero contacts (`no_contactos_encontrados`).
+
+**Fase 1 — Scraper de webs (commit de esta sesión):**
+- `pipeline/scrape_emails.py`: stub D17 → worker real (httpx + selectolax + tldextract). Home + rutas típicas + links de contacto, máx 8 págs, emails solo del dominio propio, sin permutación (L49). Orden PM: persona > comercial > obras > proyectos > genéricos operativos > info > contacto > administracion. Máx 2/empresa, `email_source='web_scrape'`, primero → `is_primary`.
+- **Override D20 PM-autorizado (solo web_scrape T2):** se aceptan corporativo_pequeno. Whitelist negativa D20 intacta. Detalle en L58.
+- Resultado: **22 de 31 con email (71%), 25 contacts insertados**. 2 excluidas por CLI (Marbella houzz.es directorio; Cushman dominio global). ASAVA marcada `recuperada_web_scrape_verificar_dominio` (web chavsa.com ≠ razón social). 5 no_emails, 3 fetch_failed, 1 js_required.
+- Regla `empresa@empresa.es` → corporativo (fix mismo run, 6 contacts reclasificados). 7 tests nuevos `tests/test_scrape_emails.py`.
+
+**Fase 2 — Hunter retry dirigido (`scripts/hunter_retry_nocontacts.py`):**
+- 9 calls sobre las 9 no resueltas. **0 recuperadas**: 8 dominios vacíos en Hunter, 1 filtrado D20 (`ragusti@brillasagusti.com` — apellido == razón social, decisión PM pendiente, NO insertado). Quota post-sesión: 1.778/2.000 restantes (reset 12-jun).
+
+**Fase 3 — Drafts:** `generate_draft --tier T2 --angle opening`: **22/22 OK validados** (0 warnings, 0 failed), tokens 104k in / 7.5k out, **$0.43**. Spot-check L39/L40 OK (saludo neutro, sin leak remitente). Cola HITL total: **73 drafted** (22 T2 + 1 T3 + 50 T4).
+
+**Lista búsqueda manual (11, por facturación desc):** AZMER (azmer.es, 19,4M€), GC BUILDING (gestionconstruccion.com, SPA, 16,9M€), OBRAS IMPALA (obrasimpala.com, 16,7M€), SANBRO (sanbro.es, web caída, 14M€), CUSHMAN D&B SPAIN (dominio global, 8,8M€), CONSULTORES DE PROYECTOS Y DISEÑO (web 500, 7,5M€), BRILLAS AGUSTI (7,5M€ — ver ragusti@ arriba), PROYECTOS Y OBRAS MARBELLA (houzz.es, 5,8M€), LOGISTIK MODULAR (redirect a logistik.es, 5,7M€), URBINSA (web caída, 5,7M€), EDIAR (constructoraediarsa.com, 5,6M€).
+
+**Coste sesión:** $0.43 LLM + 9 Hunter calls. Cap $5 holgado. `hitl_mode` intacto.
+
+**Pendientes humanos:** (1) Gonzalo: aprobar 22 drafts T2 en `/approval-queue` — OJO L57: si alguna es cliente existente, rechazar con categoría que marque opt-out. (2) PM: decisión `ragusti@brillasagusti.com`. (3) PM/Gonzalo: lista manual 11 de arriba.
+
+---
+
 ## §20 — Palancas futuras de expansión del pool
 
 Esta lista la mantenemos para que cuando PM pregunte "¿qué más podemos hacer para subir el pool de contactos?", Claude (PM consultor) o Code puedan responder con opciones concretas. NO ejecutar ninguna sin decisión PM explícita.

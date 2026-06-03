@@ -1544,6 +1544,25 @@ Los números L51, L52 y L53 quedaron sin uso. Estaban reservados para la sesión
 
 ---
 
+## 2026-06-03 — Lección 58: el cuello de las T2 sin contacto era la política D20, no (solo) la cobertura de Hunter — scraping de web propia recupera 71% a coste cero
+
+**Contexto:** 33 de 48 T2 fit (incluidas las 5 mayores, 13-19M€) estaban fuera del pipeline con `ia_fit_reason='no_contactos_encontrados'`. Diagnóstico previo asumía "Hunter no encontró nada". La realidad tiene dos partes: (a) Hunter tiene cobertura pobre de PYME constructora española (8 de 9 dominios reintentados devolvieron 0), y (b) cuando encuentra algo genérico o nominal-sin-cargo, D20 lo rechaza para T2 (`corporativo_pequeno` y A3 no aceptables).
+
+**Sesión de recuperación (números):** scraper de emails visibles en web propia (`pipeline/scrape_emails.py`, antes stub D17): 22 de 31 scrapeadas con email (71%), 25 contacts insertados `email_source='web_scrape'`, $0. Hunter retry dirigido sobre las 9 restantes: 0 recuperadas (9 calls). Drafts: 22/22 OK validados ($0.43). Quedan 11 para búsqueda manual.
+
+**Override D20 (decisión PM 2026-06-03, alcance limitado):** para `web_scrape` en T2 se aceptan buzones corporativos (info@, obras@, administracion@...) — un buzón real publicado en la web propia de una constructora de 15M€ es mejor que excluirla. D20 sigue intacta para el flujo Hunter. La whitelist NEGATIVA (rrhh@, prensa@, noreply@...) se respeta siempre.
+
+**Reglas resultantes:**
+- `empresa@empresa.es` (local part == primer label del dominio) es buzón corporativo de marca, NO persona (visto: iycsa@iycsa.es, trauxia@trauxia.es, divegon@divegon.com...). El scraper lo clasifica `corporativo_pequeno`/priority 5.
+- Si la web redirige a un dominio registrable distinto (logistikservice.es → logistik.es), el filtro estricto de dominio propio descarta los emails del dominio destino. Conservador a propósito (anti-terceros); esos casos van a manual.
+- Emails de la web solo se persisten si aparecen literalmente (L49 sigue: cero permutación/invención).
+
+**Pendiente decisión PM:** Hunter encontró `ragusti@brillasagusti.com` (apellido coincide con razón social BRILLAS AGUSTI) pero D20 lo descarta (sin nombre/cargo, regla 7). NO insertado. Si PM lo aprueba, insertar manualmente como nominal.
+
+**Aplicado en:** `pipeline/scrape_emails.py` (worker real + 7 tests), `scripts/hunter_retry_nocontacts.py`, 25 contacts + 22 drafts en prod, §19 todo.md.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
