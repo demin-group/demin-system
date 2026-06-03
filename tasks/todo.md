@@ -811,6 +811,8 @@ Si falla validación: regenerar (máximo 2 reintentos, luego marcar para revisi�
 4. **Cap diario rampado al menos a 25-30/día** sin pausas automáticas en los últimos 5 días laborables (señal de que los caps actuales son sostenibles).
 5. **Postmaster Tools del dominio en verde** (sin warnings de reputation domain o IP en los últimos 7 días).
 
+**Condición adicional (añadida 2026-06-03, L57): clientes existentes de Gonzalo excluidos.** Antes de activar autónomo, verificar que los clientes actuales de Gonzalo están excluidos del pipeline — flag a nivel empresa o todos sus contactos en opt-out, no solo el primary. Ver Lección 57 y Condición 8 del Bloque 6 (§19, sesión 2026-05-26).
+
 **Mecanismo del switch:**
 - Toggle en `/settings` del dashboard escribe `mailboxes.hitl_mode='off'`.
 - Worker `auto_approve.py` (Sprint 6) lee el toggle y aprueba automáticamente los drafts que pasen las validaciones §10.3 (incluido `has_sender_leak`).
@@ -2383,6 +2385,8 @@ Estado evaluacion 7 condiciones al cierre (worker dry-run): **3/7 verdes**.
 - ✅ Cond 7 Lemwarm (hardcoded L38).
 
 Sin schedule programado (correcto — 4 condiciones rojas).
+
+**Condición 8 (añadida 2026-06-03, L57) — Clientes existentes de Gonzalo excluidos.** Antes de activar autónomo, verificar que los clientes actuales de Gonzalo (los que ya tienen relación directa con él) están excluidos del pipeline, a nivel empresa o con todos sus contactos en opt-out. Evita que el sistema escriba prospección en frío a un cliente existente sin revisión humana (caso Inner XXI: primary opt-out tras rechazo HITL, pero secundarios activos; no existe flag a nivel empresa). El worker `auto_switch_to_autonomous.py` NO evalúa esta condición (sin desplegar, no modificado) — verificación manual PM. Pendiente: PM pedirá a Gonzalo lista de clientes actuales (sin prisa, antes del switch).
 
 **Coste sesion**: ~$0.12 LLM real (generate_draft) + ~$2 estimado research T4 batch 30 (modelo sin pricing en tabla) = **~$2.12 LLM**. Hunter: 102 calls. Cap $20 holgado.
 

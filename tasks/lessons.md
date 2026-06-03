@@ -1528,6 +1528,22 @@ Los números L51, L52 y L53 quedaron sin uso. Estaban reservados para la sesión
 
 ---
 
+## 2026-06-03 — Lección 57: exclusión de clientes existentes es por contacto, no por empresa — riesgo en modo autónomo
+
+**Contexto:** Inner XXI (cliente real de Gonzalo) tenía su contacto primary marcado opt-out tras rechazo HITL, pero sus contactos secundarios (yolanda@, ruben@) seguían activos. El pipeline hoy no los contacta porque exige is_primary=true y no lo son, pero no hay garantía estructural: no existe flag a nivel empresa de "cliente existente / no contactar".
+
+**Riesgo identificado:** en HITL el riesgo es bajo (Gonzalo revisa cada draft y rechaza a sus clientes). En AUTÓNOMO el riesgo es real: si un proceso promoviera un contacto secundario de un cliente existente a primary, el sistema le enviaría prospección en frío sin revisión humana. Escribir a un cliente actual de Gonzalo en frío es dañino reputacionalmente.
+
+**Decisión PM:** no construir mecanismo de exclusión a nivel empresa ahora. Aceptado para HITL.
+
+**PRE-REQUISITO AÑADIDO PARA EL SWITCH A AUTÓNOMO:** antes de activar modo autónomo, resolver el tema de clientes existentes, bien:
+- (a) construyendo flag a nivel empresa `companies.no_contactar` + razón, filtrado en todos los puntos del pipeline, O
+- (b) asegurando que la lista completa de clientes actuales de Gonzalo está en opt-out a nivel de TODOS sus contactos (no solo el primary).
+
+**Aplicado en:** documentación. Pendiente de resolver antes de autónomo.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
