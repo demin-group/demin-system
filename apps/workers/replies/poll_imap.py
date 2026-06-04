@@ -255,6 +255,113 @@ def find_matching_message_by_domain_and_subject(
     )
 
 
+# ─── Deteccion de bounces / DSN (fix 2026-06-04) ───────────────────────────
+# Los DSN llegan de postmaster@/mailer-daemon@ con subject tipo
+# "Undeliverable: ..."; nunca matchean la cascada (From != contact.email,
+# subject con prefijo no strippeado) y quedaban en skipped_no_match. El
+# bounce rate de auto_pause (events type='bounce') se infracontaba —
+# deuda documentada en auto_pause.py lineas 23-24, cerrada hoy.
+
+_DSN_FROM_MARKERS = ("mailer-daemon@", "postmaster@")
+
+_DSN_SUBJECT_MARKERS = (
+    "undeliverable", "undelivered mail", "mail delivery",
+    "delivery status notification", "delivery failure", "delivery has failed",
+    "returned mail", "failure notice",
+    "no se pudo entregar", "entrega fallida", "no se ha podido entregar",
+)
+
+_EMAIL_IN_BODY_RE = None  # compilado lazy en extract_bounced_recipient
+
+_DSN_RECIPIENT_HEADER_RE = None
+
+
+def is_dsn(from_addr: str, subject: str) -> bool:
+    """True si el email entrante parece un Delivery Status Notification.
+
+    Conservador: remitente postmaster@/mailer-daemon@ O subject con marcador
+    DSN tipico (en/es). No mira el Content-Type porque `get_message_with_headers`
+    ya aplana el payload; from+subject cubren los DSN reales observados.
+    """
+    f = (from_addr or "").lower()
+    if any(m in f for m in _DSN_FROM_MARKERS):
+        return True
+    s = (subject or "").lower()
+    return any(m in s for m in _DSN_SUBJECT_MARKERS)
+
+
+def extract_bounced_recipient(body: str, exclude: set[str]) -> str | None:
+    """Extrae la direccion que reboto del cuerpo de un DSN.
+
+    Orden de preferencia:
+    1. Headers DSN embebidos: `Final-Recipient: rfc822; x@y` /
+       `Original-Recipient: rfc822; x@y` / `X-Failed-Recipients: x@y`.
+    2. Fallback: primera direccion del cuerpo que no sea nuestra ni del
+       propio postmaster/mailer-daemon/noreply.
+
+    Devuelve lowercase o None si no hay candidata (NO se inventa nada).
+    """
+    import re as _re
+
+    global _EMAIL_IN_BODY_RE, _DSN_RECIPIENT_HEADER_RE
+    if _EMAIL_IN_BODY_RE is None:
+        _EMAIL_IN_BODY_RE = _re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+        _DSN_RECIPIENT_HEADER_RE = _re.compile(
+            r"(?:final-recipient|original-recipient|x-failed-recipients)\s*:"
+            r"(?:\s*rfc822\s*;)?\s*<?([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})>?",
+            _re.IGNORECASE,
+        )
+
+    if not body:
+        return None
+    excluded = {e.lower() for e in exclude}
+
+    def acceptable(addr: str) -> bool:
+        a = addr.lower()
+        if a in excluded:
+            return False
+        local = a.split("@", 1)[0]
+        return local not in ("postmaster", "mailer-daemon", "noreply", "no-reply")
+
+    m = _DSN_RECIPIENT_HEADER_RE.search(body)
+    if m and acceptable(m.group(1)):
+        return m.group(1).lower()
+
+    for cand in _EMAIL_IN_BODY_RE.findall(body):
+        if acceptable(cand):
+            return cand.lower()
+    return None
+
+
+def find_sent_message_by_recipient(env: EnvName, recipient: str) -> MessageMatch | None:
+    """Message 'sent' mas reciente cuyo contact.email == recipient exacto.
+    Para atribuir un DSN al envio que reboto."""
+    with get_session(env) as s:
+        row = s.execute(
+            text(
+                """
+                SELECT m.id::text AS message_id,
+                       m.contact_id::text AS contact_id,
+                       m.gmail_message_id
+                FROM messages m
+                JOIN contacts c ON c.id = m.contact_id
+                WHERE lower(c.email) = :addr
+                  AND m.status = 'sent'
+                ORDER BY m.sent_at DESC NULLS LAST
+                LIMIT 1
+                """
+            ),
+            {"addr": recipient.lower()},
+        ).mappings().fetchone()
+    if not row:
+        return None
+    return MessageMatch(
+        message_id=str(row["message_id"]),
+        contact_id=str(row["contact_id"]),
+        our_gmail_message_id=str(row.get("gmail_message_id") or ""),
+    )
+
+
 # Prefijos de reply/forward que strippeamos del subject para matching.
 # Incluye RV/R (reenvío español), Fwd/Fw (forward ingles), Re/RE (reply).
 _REPLY_PREFIXES = (
@@ -289,10 +396,17 @@ def insert_reply_idempotent(
     received_at: datetime,
     subject: str,
     body: str,
+    category: str | None = None,
+    classification_reason: str | None = None,
 ) -> str | None:
     """Inserta en `replies`. Dedup primario por `gmail_message_id` (UNIQUE
     desde migration 17). Si ya existe -> skip silencioso. Devuelve uuid
     del reply o None si ya existia.
+
+    `category` preseteada (fix DSN 2026-06-04): los bounces detectados
+    estructuralmente entran con category='rebote' directa — no necesitan
+    LLM (classify_replies solo procesa category IS NULL) y handle_actions
+    los recoge en su rama rebote.
     """
     with get_session(env) as s:
         # Dedup primario por gmail_message_id.
@@ -312,10 +426,12 @@ def insert_reply_idempotent(
                 """
                 INSERT INTO replies (
                     message_id, contact_id, received_at,
-                    raw_subject, raw_body, gmail_message_id
+                    raw_subject, raw_body, gmail_message_id,
+                    category, ai_classification_reason
                 ) VALUES (
                     cast(:mid as uuid), cast(:cid as uuid), :received_at,
-                    :subject, :body, :gmid
+                    :subject, :body, :gmid,
+                    :category, :cls_reason
                 )
                 RETURNING id::text
                 """
@@ -327,6 +443,8 @@ def insert_reply_idempotent(
                 "subject": subject[:1000] if subject else "",
                 "body": body[:32000] if body else "",
                 "gmid": gmail_message_id,
+                "category": category,
+                "cls_reason": classification_reason,
             },
         )
         new_id = ins.fetchone()
@@ -373,6 +491,8 @@ def run_poll(
         "dedup": 0,
         "errors": 0,
         "skipped_no_match": 0,
+        "dsn_bounces": 0,
+        "dsn_unattributed": 0,
     }
 
     with GmailAdapter(
@@ -400,6 +520,55 @@ def run_poll(
             # Skip emails que enviamos NOSOTROS (gonzalo.perez@...). Gmail
             # devuelve sent items en la query newer_than sin is:unread.
             if mailbox.email.lower() in from_addr.lower():
+                continue
+
+            # Rama DSN/bounce (fix 2026-06-04) — ANTES de la cascada: los
+            # DSN nunca matchean (From=postmaster, subject "Undeliverable:")
+            # y se perdian como skipped_no_match.
+            if is_dsn(from_addr, subj_raw):
+                recipient = extract_bounced_recipient(
+                    detail.get("plain_body") or "", {mailbox.email}
+                )
+                bounce_match = (
+                    find_sent_message_by_recipient(env, recipient)
+                    if recipient else None
+                )
+                if bounce_match is None:
+                    stats["dsn_unattributed"] += 1
+                    logger.warning(
+                        "dsn_unattributed msg_id=%s from=%r subject=%r recipient=%r",
+                        msg_id, from_addr[:80], subj_raw[:80], recipient,
+                    )
+                    continue
+                if dry_run:
+                    logger.info(
+                        "DRY_RUN dsn msg_id=%s recipient=%s -> our_message_id=%s",
+                        msg_id, recipient, bounce_match.message_id,
+                    )
+                    continue
+                try:
+                    reply_id = insert_reply_idempotent(
+                        env,
+                        message_match=bounce_match,
+                        gmail_message_id=msg_id,
+                        received_at=detail["internalDate"],
+                        subject=subj_raw,
+                        body=detail.get("plain_body") or "",
+                        category="rebote",
+                        classification_reason=f"dsn_poll_imap: bounce de {recipient}",
+                    )
+                except Exception as e:
+                    logger.exception("insert dsn reply failed msg_id=%s: %s", msg_id, e)
+                    stats["errors"] += 1
+                    continue
+                if reply_id is None:
+                    stats["dedup"] += 1
+                else:
+                    stats["dsn_bounces"] += 1
+                    logger.info(
+                        "dsn_bounce_inserted id=%s recipient=%s contact_msg=%s",
+                        reply_id, recipient, bounce_match.message_id,
+                    )
                 continue
 
             # Cascada de 3 matchers.
@@ -511,6 +680,8 @@ def main(argv: list[str] | None = None) -> int:
         f"matched_subject={stats['matched_subject']}  "
         f"matched_domain={stats['matched_domain']}  "
         f"inserted={stats['inserted']}  dedup={stats['dedup']}  "
+        f"dsn_bounces={stats['dsn_bounces']}  "
+        f"dsn_unattributed={stats['dsn_unattributed']}  "
         f"skipped={stats['skipped_no_match']}  errors={stats['errors']}"
     )
     return 0 if stats["errors"] == 0 else 4

@@ -2438,6 +2438,22 @@ Origen: verificación 2026-06-03 del flujo de edición HITL confirmó (46/46 en 
 
 ---
 
+### 2026-06-04 — Fix cascada replies: backfill 30d + bounces DSN + Carmen resuelta (L60)
+
+Origen: diagnóstico del follow-up erróneo a Carmen (POR OTRA ARQUITECTURA) — respondió al opening en 45 min (19-may) pero su reply quedó 1 día fuera de la ventana 7d del backfill de L54, y `follow_ups` regeneró un reframe el 02-jun.
+
+**Ejecutado:**
+1. **Backfill 30d** (`-subject:lemwarmup`, max 500 — el ruido lemwarm saturaba el cap): 1 reply nueva (Carmen → `no_ahora`, Haiku $0.0001), 6 dedup, 0 duplicados. handle_actions: re_engage_40 programado, reprogramado a reply+40d (**28-jun**, no now()+40d).
+2. **Reframe erróneo**: ya estaba cancelado — **Gonzalo lo rechazó vía HITL (tono, 04-jun 14:13) antes de esta sesión**. Sin opt-out (correcto, es no_ahora). Daño consumado: 0 de 8 follow-ups enviados fueron post-reply.
+3. **Fix bounces DSN** (deuda auto_pause.py:23-24): rama DSN en poll_imap (detección + Final-Recipient + insert reply `category='rebote'` sin LLM) + handle_actions rebote marca `messages.status='bounced'` + evento `bounce` para auto_pause. Retroactivo DECON 86: bounced + evento + email_verified=false ✓. 8 tests nuevos, 31/31 verdes.
+4. **Recomendación (no aplicada, pendiente OK PM):** mantener default 7d del poller; protocolo de backfill manual tras parones >3d. Detalle en L60.
+
+**Estado secuencia Carmen final:** opening sent → reply no_ahora archivada → 2 reframes cancelled → re_engage_40 scheduled 28-jun. Coste sesión: **~$0.0001 LLM**. `hitl_mode` intacto.
+
+**Pre-requisito autónomo reforzado (L60-d):** replies+bounces sólidos antes del switch — sin HITL este reframe habría salido solo.
+
+---
+
 ## §20 — Palancas futuras de expansión del pool
 
 Esta lista la mantenemos para que cuando PM pregunte "¿qué más podemos hacer para subir el pool de contactos?", Claude (PM consultor) o Code puedan responder con opciones concretas. NO ejecutar ninguna sin decisión PM explícita.

@@ -310,6 +310,24 @@ def mark_contact_email_invalid(env: EnvName, contact_id: str) -> None:
         s.commit()
 
 
+def mark_message_bounced(env: EnvName, message_id: str | None) -> None:
+    """messages.status='bounced' para el envio que reboto (solo si sigue
+    'sent' — no pisa cancelled/aprobaciones). No-op si message_id es None."""
+    if not message_id:
+        return
+    with get_session(env) as s:
+        s.execute(
+            text(
+                """
+                UPDATE messages SET status = 'bounced'
+                WHERE id = cast(:mid as uuid) AND status = 'sent'
+                """
+            ),
+            {"mid": message_id},
+        )
+        s.commit()
+
+
 def update_reply_archivado(env: EnvName, reply_id: str) -> None:
     """human_action='archivado' (auto-handled)."""
     with get_session(env) as s:
@@ -447,7 +465,19 @@ def handle_one(env: EnvName, reply: dict[str, Any], dry_run: bool) -> str:
 
     if cat == "rebote":
         if dry_run:
-            return "DRY: rebote -> email_verified=false + cancel future"
+            return "DRY: rebote -> bounced + event bounce + email_verified=false + cancel future"
+        # Fix 2026-06-04: el message que reboto pasa a status='bounced' y se
+        # registra evento 'bounce' (auto_pause cuenta events type='bounce'
+        # joineados por message_id — antes los DSN eran invisibles y el
+        # bounce rate se infracontaba, Apendice A regla 6).
+        mark_message_bounced(env, message_id)
+        insert_event(
+            env,
+            event_type="bounce",
+            message_id=message_id,
+            contact_id=contact_id,
+            payload={"reply_id": reply_id, "source": "handle_actions_rebote"},
+        )
         mark_contact_email_invalid(env, contact_id)
         n = cancel_future_steps(env, contact_id)
         update_reply_archivado(env, reply_id)

@@ -1593,6 +1593,24 @@ Los números L51, L52 y L53 quedaron sin uso. Estaban reservados para la sesión
 
 ---
 
+## 2026-06-04 — Lección 60: ventana de backfill debe cubrir desde el primer envío + bounces DSN eran invisibles — y el HITL atrapó el único follow-up erróneo
+
+**Contexto:** el bug de matching de replies (L54, fix 2026-05-27) dejó un periodo ciego. El backfill correctivo usó `newer_than:7d`, pero el envío productivo empezó el 14-may: la respuesta de Carmen (POR OTRA ARQUITECTURA, 19-may, **45 minutos** después del opening) quedó 1 día fuera de la ventana y nunca entró en `replies`. En cascada, `follow_ups.py` (cuyo stop-on-reply en líneas 154-157 depende de `replies`) regeneró un reframe el 02-jun para alguien que ya había contestado.
+
+**(a) Backfill 30d correctivo:** `poll_imap --query "newer_than:30d -subject:lemwarmup" --max-results 500` (el ruido lemwarm saturaba el cap de listado). Resultado: 1 reply nueva (Carmen → `no_ahora`), 6 dedup correctas, 0 duplicados. **Regla: la ventana de un backfill se dimensiona desde el inicio del periodo ciego (primer envío sin matching fiable), no con un valor por defecto.**
+
+**(b) Bounces DSN invisibles (deuda de auto_pause.py:23-24 cerrada):** los DSN (`postmaster@`/`mailer-daemon@`, subject "Undeliverable:...") nunca matcheaban la cascada → `skipped_no_match` → bounce rate de auto_pausa infracontado (Apéndice A regla 6). Fix: rama DSN en `poll_imap` ANTES de la cascada (`is_dsn` + `extract_bounced_recipient` vía Final-Recipient/X-Failed-Recipients/fallback) que inserta la reply con `category='rebote'` preseteada (sin LLM), y la rama rebote de `handle_actions` ahora marca `messages.status='bounced'` + inserta evento `bounce` (joineable por `message_id`, que es lo que cuenta auto_pause). Retroactivo: DECON 86 (a.rompotis@decon.gr) bounced + evento + email_verified=false. 8 tests nuevos, 23 existentes sin regresión.
+
+**(c) Daño real: cero.** El único follow-up erróneo (reframe de Carmen) murió DOS veces antes de salir: PM lo detectó en /approval-queue y Gonzalo ya lo había rechazado vía HITL (categoría `tono`, 04-jun 14:13 UTC) horas antes del fix. 0 de 8 follow-ups enviados fueron a contactos con reply previa. El re_engage_40 de Carmen quedó reprogramado a su respuesta+40d (28-jun), no a now()+40d, porque el retraso de procesamiento era artefacto del bug.
+
+**(d) PRE-REQUISITO REFORZADO PARA AUTÓNOMO:** sin HITL, ese reframe habría salido solo — un correo "por si no viste el primero" a alguien que respondió en 45 minutos. Antes del switch: pipeline de replies+bounces sólido y verificado (poller corriendo, matchers cubriendo bounces, backfill post-outage protocolizado). Se suma a la Condición 8 (clientes existentes, L57) como condición humana previa.
+
+**Ventana default del poller (recomendación, NO aplicada):** mantener `newer_than:7d` — con cadencia de 5 min sobra, y 14d duplicaría llamadas Gmail por run sin beneficio en operación continua. La regla operativa correcta es: tras CUALQUIER parón del poller >3 días, backfill manual con ventana = parón + margen. El riesgo real a vigilar es el timer muerto, no la ventana.
+
+**Aplicado en:** `replies/poll_imap.py` (rama DSN + category preseteada), `replies/handle_actions.py` (mark_message_bounced + evento bounce), `tests/test_poll_imap_dsn.py`, datos prod corregidos (Carmen + DECON 86).
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
