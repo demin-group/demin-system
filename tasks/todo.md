@@ -2532,6 +2532,24 @@ Opciones futuras para estas: (a) búsqueda manual PM/Gonzalo en sus webs cuando 
 
 ---
 
+## Deploys pendientes al VPS (Hetzner 178.105.143.239)
+
+El VPS ejecuta vía systemd el código de la copia del repo en `/home/demin/demin-system`. Esa copia NO se actualiza sola: requiere `git pull` manual. Hay cambios en `main` que aún no están corriendo en producción continua:
+
+### Pendiente 1 — Fix de bounces DSN (L60, commit 2657ad1, 2026-06-04)
+- **Qué:** `poll_imap` corregido para detectar bounces de postmaster/mailer-daemon (DSN) y marcarlos como `bounced` + evento para auto_pause.
+- **Impacto de NO desplegarlo:** los bounces futuros siguen siendo invisibles en producción; el bounce rate de auto_pause sigue infracontado (toca regla no negociable 6). El backfill retroactivo de DECON 86 ya está en BD, pero los NUEVOS bounces no se capturarán hasta el deploy.
+- **Cómo desplegar:** `ssh demin@178.105.143.239` → `cd /home/demin/demin-system` → `git pull origin main`. Verificar si el timer `demin-poll-imap.timer` recoge el código nuevo automáticamente en su próximo run (cada 5 min) o si requiere `sudo systemctl restart` (sudo bloqueado hoy — ver nota sudo abajo).
+
+### Pendiente 2 — Worker auto_switch (sin desplegar desde su construcción)
+- **Qué:** `auto_switch_to_autonomous.py` + `demin-auto-switch.{service,timer}`.
+- **Impacto de NO desplegarlo:** el switch a autónomo no se evalúa automáticamente. PM lo hace manual desde /settings cuando toque (decisión ya tomada, ver L sobre cancelación Sesión 1). Baja prioridad mientras el switch sea manual.
+
+### Nota sobre sudo en el VPS
+El deploy de archivos systemd nuevos (Pendiente 2) y reinicios de servicio requieren sudo, que hoy no está resuelto (password root reseteada vía Hetzner, NOPASSWD no configurado). El `git pull` (Pendiente 1) NO requiere sudo. Si en el futuro se necesita sudo recurrente, configurar NOPASSWD limitado a `systemctl` en `/etc/sudoers.d/` (opción 3 que se evaluó y no se ejecutó).
+
+---
+
 ## Apéndice A — Reglas no negociables (resumen para Claude Code)
 
 1. **Nunca** envíes un correo sin pasar por la cola de aprobación (en HITL). En autónomo, nunca sin pasar las validaciones de §10.3.
