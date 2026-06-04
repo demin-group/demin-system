@@ -72,6 +72,7 @@ Las decisiones marcadas como `[DECIDIDO]` en `todo.md` no se cuestionan sin preg
 4. **Explicar cambios**: resumen de alto nivel en cada paso, no narres cada línea.
 5. **Documentar resultados**: añade entradas a la sección §19 ("Revisión y log de ejecución") de `tasks/todo.md` cuando termines fases o tomes decisiones nuevas.
 6. **Capturar lecciones**: actualiza `tasks/lessons.md` después de las correcciones del humano.
+7. **Push automático al cerrar tarea**: al terminar cualquier tarea que incluya commits, haz `git push origin main` como último paso, sin esperar a que te lo pidan. El objetivo es que el trabajo nunca se quede solo en local. Es al **cerrar la tarea**, no tras cada commit intermedio (puedes hacer varios commits durante una tarea y un solo push al final). Excepciones: (a) si el working tree tiene cambios a medias que NO deben subirse, commitea solo lo terminado y pushea eso; (b) si el push falla (sin red, conflicto, credenciales), reporta el error y NO lo fuerces; (c) si estás en una rama distinta de `main` o en un flujo donde el push sería prematuro, páralo y pregunta. En el reporte de cierre, confirma siempre si pusheaste y a qué commit quedó `origin/main`.
 
 ---
 

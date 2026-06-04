@@ -1611,6 +1611,18 @@ Los números L51, L52 y L53 quedaron sin uso. Estaban reservados para la sesión
 
 ---
 
+## 2026-06-04 — Lección 61: push automático al cerrar tarea
+
+**Contexto:** se acumularon 7 commits en local sin pushear a GitHub durante ~1 semana (27-may a 04-jun) porque el push solo se hacía bajo petición explícita y nadie lo pidió. Riesgo: trabajo viviendo solo en la máquina local (sin copia en remoto) y deploys al VPS bloqueados (el VPS hace pull de GitHub, que estaba desactualizado).
+
+**Decisión PM:** Code debe hacer `git push origin main` automáticamente al cerrar cada tarea con commits, sin esperar petición. Regla añadida a CLAUDE.md. Se eligió instrucción en CLAUDE.md sobre git hook post-commit por ser más controlable (pushea al cerrar tarea, no en commits intermedios ni experimentos; no rompe si se trabaja sin conexión).
+
+**Regla resultante:** push al cierre de tarea por defecto, con excepciones (cambios a medias, push fallido, rama no-main). Confirmar en cada reporte si se pusheó.
+
+**Aplicado en:** CLAUDE.md (Gestión de tareas, regla 7).
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
