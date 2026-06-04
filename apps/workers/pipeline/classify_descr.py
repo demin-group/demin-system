@@ -195,11 +195,27 @@ def classify_one(item: Pending, system: str, user_template: str) -> Result:
         )
 
 
-def fetch_pending(env: EnvName, limit: int | None, reclassify: bool) -> list[Pending]:
-    """Trae empresas a clasificar. Orden estable por NIF para idempotencia."""
+def fetch_pending(
+    env: EnvName,
+    limit: int | None,
+    reclassify: bool,
+    include_descartado: bool = False,
+) -> list[Pending]:
+    """Trae empresas a clasificar. Orden estable por NIF para idempotencia.
+
+    `include_descartado=True` extiende el filtro de tier a incluir 'descartado'.
+    Sesión 2026-05-27 Palanca B: las 3.845 `ia_fit='pendiente'` viven todas en
+    `tier='descartado'` (el ingest las descartó por CNAE fuera de T1-T4 y
+    `classify_descr` nunca las miró). Ejecutamos IA igualmente para rescatar
+    falsos descartes (empresas con descripción libre que revela ICP pese al
+    CNAE mal tipado).
+    """
     from shared.db import get_session  # noqa: PLC0415
 
-    where = "tier in ('T1','T2','T3','T4')"
+    tiers = "'T1','T2','T3','T4'"
+    if include_descartado:
+        tiers += ",'descartado'"
+    where = f"tier in ({tiers})"
     if not reclassify:
         where += " and ia_fit = 'pendiente'"
     sql = f"select nif, nombre, descripcion from companies where {where} order by nif"
@@ -244,13 +260,19 @@ def main(argv: list[str] | None = None) -> int:
                    help="Ignorar filtro ia_fit='pendiente'. Reclasifica accionables ya etiquetadas.")
     p.add_argument("--workers", type=int, default=8,
                    help="Threads paralelos para llamadas LLM (default 8).")
+    p.add_argument("--include-descartado", action="store_true",
+                   help="Incluir tier='descartado' en el filtro (Palanca B §20 — sesión 2026-05-27).")
+    p.add_argument("--cap-usd", type=float, default=USD_COST_CAP,
+                   help=f"Cap de coste USD del run (default {USD_COST_CAP}). Si se supera mid-batch, parar.")
     args = p.parse_args(argv)
     env: EnvName = args.env  # type: ignore[assignment]
+    cap_usd: float = args.cap_usd
 
     print("=" * 76)
     print(
         f"classify_descr  env={env}  limit={args.limit}  "
-        f"reclassify={args.reclassify}  workers={args.workers}"
+        f"reclassify={args.reclassify}  workers={args.workers}  "
+        f"include_descartado={args.include_descartado}  cap_usd={cap_usd}"
     )
     print("=" * 76)
 
@@ -258,7 +280,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[prompt] cargado de {PROMPT_PATH.name}: "
           f"system={len(system)} chars, user_template={len(user_template)} chars")
 
-    pending = fetch_pending(env, args.limit, args.reclassify)
+    pending = fetch_pending(env, args.limit, args.reclassify, include_descartado=args.include_descartado)
     if not pending:
         print("No hay empresas pendientes. Nada que hacer.")
         return 0
@@ -299,9 +321,9 @@ def main(argv: list[str] | None = None) -> int:
                     f"errs={sum(error_counts.values()):>2}  "
                     f"tok={total_tok_in}+{total_tok_out}  est_usd={cost:.3f}"
                 )
-                if cost > USD_COST_CAP and not cost_alarm_triggered:
+                if cost > cap_usd and not cost_alarm_triggered:
                     cost_alarm_triggered = True
-                    print(f"PARADA: coste estimado {cost:.2f} USD supera cap {USD_COST_CAP} USD")
+                    print(f"PARADA: coste estimado {cost:.2f} USD supera cap {cap_usd} USD")
 
     print(f"[run] {args.workers} threads, batch_size={BATCH_SIZE}")
     print()
