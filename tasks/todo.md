@@ -2424,6 +2424,20 @@ Sesión dirigida por PM para recuperar las 33 T2 fit sin ningún contact (las 5 
 
 ---
 
+### 2026-06-04 — Ajuste prompts post-auditoría HITL: presentación de Gonzalo + saludo neutro confirmado (L59)
+
+Origen: verificación 2026-06-03 del flujo de edición HITL confirmó (46/46 en BD + 3/3 contra Gmail real) que se envía la versión editada, y reveló el patrón de edición de Gonzalo: añade "soy Gonzalo, responsable de DEMIN" y cambia saludo a "Buenos días".
+
+**Decisiones PM aplicadas:**
+- **Saludo neutro SE MANTIENE** (L5/L39): riesgo de desincronía horaria. El sistema no genera "Buenos días"; Gonzalo edita a mano casos concretos.
+- **Presentación añadida**: `generate_email_opening.md` → v3 (sección "PRESENTACIÓN DE GONZALO", integrada tras el saludo, conversacional, sin datos de contacto para no redundar con la firma). `generate_email_re_engage_40.md` → v2 (recordatorio LIGERO de identidad). `reframe`/`closing` sin cambios: son continuación de secuencia, re-presentarse sería antinatural.
+- **Cero regeneración**: los 74 drafts en cola quedan tal cual; tabla `messages` intacta. El cambio aplica solo a generaciones nuevas.
+- Actualización L48 registrada (segunda exposición token en transcript local 2026-06-03; medida preventiva: prompts futuros sobre `mailboxes` deben excluir el campo del token).
+
+**Coste sesión: $0 LLM** (solo edición de texto). `hitl_mode` intacto.
+
+---
+
 ## §20 — Palancas futuras de expansión del pool
 
 Esta lista la mantenemos para que cuando PM pregunte "¿qué más podemos hacer para subir el pool de contactos?", Claude (PM consultor) o Code puedan responder con opciones concretas. NO ejecutar ninguna sin decisión PM explícita.

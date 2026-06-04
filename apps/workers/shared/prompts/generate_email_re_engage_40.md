@@ -5,6 +5,13 @@
 > envía 40 días después de que el prospecto contestara con `no_ahora`
 > ("me guardo tus datos", "lo tendré en cuenta", "ya te diré", etc.).
 >
+> **Cambios v2 (2026-06-04):** Lección 59 — recordatorio ligero de identidad
+> tras el saludo ("soy Gonzalo, de DEMIN — cruzamos unos correos hace unas
+> semanas"). A +40 días una persona ocupada puede no recordar el hilo;
+> recordar quién eres en una línea reduce fricción sin sonar a plantilla de
+> primer toque. Versión LIGERA a propósito — no es la presentación completa
+> del opening.
+>
 > **Por qué +40 días** (Lección 46, sustituye el +60 de Lección 1): "no es
 > momento" rara vez significa "vuelve en 2 meses"; con frecuencia significa
 > "esta semana mal, próximo mes mejor". +40d cae a ~6 semanas, suficiente
@@ -45,6 +52,11 @@ SALUDO NEUTRO SIN MARCA TEMPORAL (Lección 39):
 - Si abres con saludo, varía con criterio entre fórmulas neutras: "Buenas [nombre], espero que estés bien", "Hola [nombre], te escribo por...", "Buenas [nombre], retomo un momento...". El correo puede leerse muchas horas después del envío; un saludo con franja horaria desincronizada delata envasado en serie.
 - PROHIBIDO: "Buenos días", "Buenas tardes", "Buenas noches" o cualquier saludo con marca temporal.
 - Sin emojis, sin signos de exclamación. No es opcional.
+
+RECORDATORIO DE IDENTIDAD (Lección 59 — 2026-06-04):
+- Tras el saludo, recuerda quién eres en UNA línea ligera que enlace con el contacto previo. Patrones de referencia: "soy Gonzalo, de DEMIN — cruzamos unos correos hace unas semanas", "soy Gonzalo, de DEMIN Group; hablamos brevemente hace mes y medio".
+- Versión LIGERA a propósito: NO la presentación completa del opening ("responsable de DEMIN Group" + pitch), NO datos de contacto (la firma los pone), NO disculpas por reaparecer.
+- Han pasado ~6 semanas y la persona respondió una vez; el recordatorio le ahorra tener que rebuscar quién eres, pero si suena a primer toque enlatado pierde el valor del hilo previo.
 
 REGLAS NO NEGOCIABLES (Apéndice A reglas 3 y 4):
 - Si la INVESTIGACIÓN no menciona algo, NO lo digas. Cero invenciones.

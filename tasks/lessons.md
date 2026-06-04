@@ -1563,6 +1563,36 @@ Los números L51, L52 y L53 quedaron sin uso. Estaban reservados para la sesión
 
 ---
 
+## 2026-06-04 — Actualización L48: segunda exposición del refresh_token + medida preventiva
+
+**Contexto:** durante la verificación del flujo de edición HITL (2026-06-03), al inspeccionar la tabla `mailboxes` el refresh_token OAuth se imprimió de nuevo en el output de una sesión Code (segunda exposición tras la de origen en L48).
+
+**Decisión PM:** dejarlo, riesgo bajo (el token solo es utilizable junto al client_id/secret del proyecto GCP, transcripts locales). Consistente con L48 (no cifrar).
+
+**Medida preventiva acordada:** cuando un prompt pida inspeccionar la tabla `mailboxes`, incluir explícitamente "NO imprimas el campo `oauth_refresh_token_encrypted`; selecciona solo las columnas necesarias". Evita acumular más copias del token en transcripts sin coste ni re-autorizar.
+
+**Estado del riesgo:** acumulativo pero bajo. Si en algún momento PM decide higiene máxima, re-autorizar OAuth (5 min, `docs/oauth_reauthorize_gmail.md`) revoca todos los tokens viejos.
+
+**Aplicado en:** nota preventiva para prompts futuros. Sin acción técnica inmediata.
+
+---
+
+## 2026-06-04 — Lección 59: ajuste de prompt — saludo neutro se mantiene + presentación de Gonzalo añadida
+
+**Contexto:** la verificación del flujo HITL (2026-06-03, auditoría de las 46 ediciones en `message_revisions`) reveló que Gonzalo edita casi todos los drafts para añadir "soy Gonzalo, responsable de DEMIN" y cambiar el saludo a "Buenos días".
+
+**Decisión PM:**
+- Saludo neutro SE MANTIENE (L5/L39 vigentes), por riesgo de desincronía horaria. Gonzalo edita a mano si quiere en casos concretos.
+- Presentación "soy Gonzalo, responsable de DEMIN" SE AÑADE al prompt de opening, integrada naturalmente en el cuerpo sin redundar con la firma (la firma ya cierra con "Gonzalo Pérez / Responsable DEMIN Group" — el cuerpo presenta conversacional, la firma cierra con datos).
+- Follow-ups dentro de secuencia (reframe D+14, closing D+28): NO llevan presentación — son continuación y sus prompts ya lo prohíben/desaconsejan. `re_engage_40` (+40d tras `no_ahora`): SÍ lleva recordatorio LIGERO de identidad ("soy Gonzalo, de DEMIN — cruzamos unos correos hace unas semanas") porque a ~6 semanas el prospecto puede no recordar el hilo. No existe prompt `re_engage_90` (es concepto en §11.2, sin archivo); si se crea, heredará el recordatorio ligero.
+- Los drafts ya existentes (`drafted`) NO se regeneran — solo los nuevos llevan el cambio.
+
+**Motivo:** reducir el trabajo de edición manual de Gonzalo en los correos futuros (46 de 46 envíos con edición seguían este patrón).
+
+**Aplicado en:** `generate_email_opening.md` (v3) y `generate_email_re_engage_40.md` (v2). `reframe`/`closing` sin cambios (justificado arriba). Sin regeneración de drafts existentes, tabla `messages` intacta.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
