@@ -95,6 +95,7 @@ def fetch_pending_replies(
             r.raw_body,
             m.subject AS original_subject,
             m.step_index,
+            m.angle AS message_angle,
             c.cargo AS contact_cargo,
             c.email AS contact_email,
             co.tier,
@@ -114,12 +115,21 @@ def fetch_pending_replies(
 
 
 def _angle_from_step_index(step_index: int | None) -> str:
-    """step_index 0=opening, 1=reframe, 2=closing."""
+    """Fallback cuando no hay `messages.angle` guardado. Mapeo de la cadencia
+    demin_v1 tras migration 18: 0=opening, 1=reframe, 2=value, 3=closing.
+
+    Solo se usa como respaldo: `classify_one_reply` prefiere leer el `angle`
+    real del message (campo autoritativo), porque step_index 3 lo comparten
+    `closing` (cadencia) y `re_engage_40` (handle_actions) y el indice por si
+    solo es ambiguo.
+    """
     if step_index == 0 or step_index is None:
         return "opening"
     if step_index == 1:
         return "reframe"
     if step_index == 2:
+        return "value"
+    if step_index == 3:
         return "closing"
     return "unknown"
 
@@ -128,7 +138,9 @@ def classify_one_reply(
     system: str, user_template: str, reply: dict[str, Any]
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Llama LLM. Devuelve (parsed_json, meta llm)."""
-    angle = _angle_from_step_index(reply.get("step_index"))
+    # Preferimos el `angle` real del message (incluye re_engage_40/90, que el
+    # step_index no distingue de closing). Fallback al indice si no hay message.
+    angle = reply.get("message_angle") or _angle_from_step_index(reply.get("step_index"))
     user = user_template.format(
         subject=reply.get("raw_subject", "") or "",
         from_addr=reply.get("contact_email", "") or "",
