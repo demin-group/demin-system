@@ -173,7 +173,7 @@ async function loadRates7d(): Promise<Rates7d> {
 
 async function loadAngleStats(): Promise<AngleStats[]> {
   const admin = createAdminClient();
-  const angles = ["opening", "reframe", "closing", "re_engage_60", "re_engage_90"];
+  const angles = ["opening", "reframe", "value", "closing", "re_engage_60", "re_engage_90"];
   const out: AngleStats[] = [];
   for (const angle of angles) {
     const sent = await admin

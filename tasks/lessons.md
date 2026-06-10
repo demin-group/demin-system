@@ -1623,6 +1623,30 @@ Los números L51, L52 y L53 quedaron sin uso. Estaban reservados para la sesión
 
 ---
 
+## 2026-06-10 — Lección 62: la cadencia es data-driven en DÍAS pero no en ÁNGULOS; reordenarla reindexa `step_index` y toca media docena de sitios
+
+**Contexto:** decisión de producto (Alberto/Fernando) de espaciar mucho más los follow-ups a no-respondedores y añadir un tercer follow-up: de D+0/D+14/D+28 (3 toques) a D+0/D+40/D+80/D+120 (4 toques: opening/reframe/`value`/closing). Sobre el papel parecía "solo cambiar `sequences.steps` en BD". No lo era.
+
+**Lo aprendido (patrón técnico reutilizable):**
+
+1. **`follow_ups.py` es data-driven en los DÍAS pero NO en los ÁNGULOS.** Lee `sequences.steps[].day` en runtime (cambiar el ritmo = UPDATE en BD, sin redeploy), pero los `angle` válidos están en una **whitelist hardcodeada** en dos sitios: `Angle = Literal[...]` + la validación de `load_sequence_steps` en `follow_ups.py`, y `Angle = Literal[...]` + `_STEP_BY_ANGLE` + `--angle choices` en `generate_draft.py`. Un ángulo nuevo lanza `RuntimeError` hasta que se amplían. Regla: **antes de añadir un toque nuevo, grep de la lista de ángulos en todo el repo**, no asumas que basta con la BD.
+
+2. **Reordenar la cadencia REINDEXA `step_index`** (aquí `closing` pasó de 2 a 3). El `step_index` está cableado en más sitios de los obvios: `_angle_from_step_index` de `classify_replies.py`, comentarios de schema (`messages.step_index`/`messages.angle`), el array de ángulos del dashboard `metrics/page.tsx`, y varios tests parametrizados. Un grep de `step_index` + `closing` + la lista de ángulos lo destapa todo (lo hizo un subagente de exploración; yo había subestimado la superficie).
+
+3. **Colisión de `step_index` entre cadencia y re_engage.** `handle_actions` asigna `step_index` 3/4 a `re_engage_40`/`re_engage_90`; al mover `closing` a 3 colisiona con `re_engage_40`. Es **inocua** (el dedup de re_engage es por `angle`, y la cadencia se detiene en cualquier reply, así que un contacto nunca recorre ambos caminos), pero la solución correcta es **leer el campo autoritativo `messages.angle` directo en vez de derivar el ángulo del `step_index`** (que es ambiguo). Patrón general: si un dato existe explícito en la tabla, no lo re-derives de un índice posicional.
+
+4. **Cambiar la cadencia afecta el CONTENIDO de los prompts existentes, no solo su orden.** El `reframe` decía "Hace 14 días" y el `closing` "Han pasado 28 días" / "tercer y último" / "el más corto de los tres": todo eso queda factualmente falso al re-espaciar. Dos tests (`test_closing_mentions_d28`, `test_reframe_mentions_d14`) lo cazaron. Regla: al recalibrar cadencia, revisar los prompts por menciones de días y de conteo de toques.
+
+5. **In-flight al ampliar intervalos: seguro por construcción.** Idempotencia `(contact, step_index)` → cero duplicados; ampliar intervalos solo RETRASA el siguiente toque (nunca lo adelanta) → ningún toque inmediato sorpresa. El único riesgo (un FU nuevo a contactos que YA completaron la secuencia vieja) se neutraliza aplicando pronto + `--dry-run` de verificación. **Verificar el estado real antes de tocar** (Paso 0) confirmó que la hipótesis de cadencia era correcta y que hoy 0 contactos habían completado el closing.
+
+**Meta-aprendizaje (workflows de verificación):** los agentes verificadores adversariales del prompt nuevo dieron muchos falsos positivos ("step_index 2 ya es closing", "la cadencia es de 3 toques") porque **no les di el contexto de que el cambio a 4 toques ERA el objetivo** — evaluaron contra el repo actual. Al lanzar verificadores de un cambio, dales explícitamente el estado destino, o filtrarán como "error" justo lo que vas a modificar.
+
+**Regla resultante:** cambiar la cadencia de `demin_v1` = (a) migración `UPDATE sequences.steps`; (b) si hay ángulo nuevo, ampliar whitelist en `follow_ups.py` + `generate_draft.py` + crear el prompt versionado; (c) si reordena, auditar `step_index` en `classify_replies`, comentarios de schema, dashboard y tests; (d) revisar prompts por menciones de días/conteo; (e) verificar in-flight (idempotencia + ampliar-solo-retrasa) y correr `--dry-run` tras aplicar a prod.
+
+**Aplicado en:** migración `20260610120000_18_seq_demin_v1_cadence_d40_d80_d120.sql`; `follow_ups.py`, `generate_draft.py`, `classify_replies.py`; prompts `generate_email_value.md` (nuevo), `generate_email_closing.md` (v3), `generate_email_reframe.md` (v3); `apps/dashboard/.../metrics/page.tsx`; tests de workers (636 passed); `todo.md` D11 + §9.2 + log §19. NO aplicada a prod en esta sesión.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>

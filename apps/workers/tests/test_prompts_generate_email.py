@@ -19,7 +19,7 @@ import pytest
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "shared" / "prompts"
 
-ANGLES = ("opening", "reframe", "closing")
+ANGLES = ("opening", "reframe", "value", "closing")
 EMAIL_TYPES = ("decisor", "nominal", "corporativo_pequeno")
 
 # Variables comunes a los 3 ángulos.
@@ -83,8 +83,8 @@ def test_user_template_has_all_common_variables(angle: str) -> None:
     assert not missing, f"{angle}: faltan variables {missing}"
 
 
-@pytest.mark.parametrize("angle", ("reframe", "closing"))
-def test_correos_previos_present_in_reframe_and_closing(angle: str) -> None:
+@pytest.mark.parametrize("angle", ("reframe", "value", "closing"))
+def test_correos_previos_present_in_followups(angle: str) -> None:
     _, _, user = _load(angle)
     assert "{correos_previos}" in user, f"{angle}: falta {{correos_previos}}"
 
@@ -213,6 +213,13 @@ def test_opening_and_reframe_body_limit_is_130(angle: str) -> None:
     assert "130 palabras" in system
 
 
+def test_value_body_limit_is_120() -> None:
+    """El value (3er toque, D+80) es algo más corto que opening/reframe:
+    máx 120 palabras (sigue dentro del 50-180 del validador §10.3)."""
+    _, system, _ = _load("value")
+    assert "120 palabras" in system
+
+
 # ─── 8. Versionado en cabecera (regla 8 Apéndice A) ────────────────────────
 
 
@@ -274,20 +281,21 @@ def test_prompt_forbids_sender_contact_in_body(angle: str) -> None:
     assert "quedo a vuestra disposición" in text_lower or "podéis escribirme" in text_lower
 
 
-# ─── 11. Lección 39 — cabeceras de cadencia D+14/D+28 ──────────────────────
+# ─── 11. Lección 62 — cabeceras de cadencia D+40/D+80/D+120 ─────────────────
 
 
-def test_reframe_mentions_d14_in_system() -> None:
-    """Lección 39: el reframe v2 envía a los 14 días (no 4 como v1).
-    El system debe reflejar 'Hace 14 días' o equivalente."""
+def test_reframe_mentions_d40_in_system() -> None:
+    """Lección 62: el reframe v3 envía a los 40 días (antes D+14 [L39], D+4
+    [seed]). El system debe reflejar 'Hace unos 40 días' o equivalente."""
     _, system, _ = _load("reframe")
-    assert "14 días" in system or "14 dias" in system or "+14" in system
+    assert "40 días" in system or "40 dias" in system or "+40" in system
 
 
-def test_closing_mentions_d28_in_system() -> None:
-    """Lección 39: el closing v2 envía a los 28 días (no 10 como v1)."""
+def test_closing_mentions_d120_in_system() -> None:
+    """Lección 62: el closing v3 envía a los 120 días / ~4 meses (antes D+28
+    en v2 [L39], D+10 en v1). Es el cuarto y último toque de la cadencia."""
     _, system, _ = _load("closing")
-    assert "28 días" in system or "28 dias" in system or "+28" in system
+    assert "120 días" in system or "120 dias" in system or "+120" in system or "4 meses" in system
 
 
 # ─── 12. Lección 46 — prompt re_engage_40 nuevo ────────────────────────────

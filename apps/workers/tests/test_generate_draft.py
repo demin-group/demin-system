@@ -394,7 +394,7 @@ def test_render_user_template_unknown_placeholders_remain_literal() -> None:
 # ─── 7. _load_prompt_for_angle (lee los archivos reales del repo) ──────────
 
 
-@pytest.mark.parametrize("angle", ("opening", "reframe", "closing"))
+@pytest.mark.parametrize("angle", ("opening", "reframe", "value", "closing"))
 def test_load_prompt_for_each_angle(angle: str) -> None:
     system, user = _load_prompt_for_angle(angle)  # type: ignore[arg-type]
     assert "DEMIN" in system

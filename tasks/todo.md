@@ -115,7 +115,7 @@ Métricas operativas que sí trackeamos para diagnosticar (no como objetivo): bo
 | D8 | Personalización: redacción IA completa por correo, no plantillas con variables | [DECIDIDO] |
 | D9 | KB del negocio: vía RAG con `pgvector` en Supabase, editable desde dashboard | [DECIDIDO] |
 | D10 | Investigación pre-redacción: scrapeo + extracción IA del dossier del prospecto | [DECIDIDO] |
-| D11 | Cadencia: 3 toques (D0, D4, D10) con ángulos distintos por toque | [DECIDIDO] |
+| D11 | Cadencia: 4 toques (D+0/D+40/D+80/D+120) con ángulos distintos (opening/reframe/value/closing). Se detiene si el contacto responde. | [ACTUALIZADO 2026-06-10 L62 — antes 3 toques D+14/D+28 (L39), antes D+0/D+4/D+10] |
 | D12 | Clasificación de respuestas: 6 categorías + flag de opt-out explícito | [DECIDIDO] |
 | D13 | Re-engage: "no ahora" → +60 días; "no interesado" → +90 días; opt-out → permanente | [DECIDIDO] |
 | D14 | Aprendizaje: manual en v1 (humanos ajustan KB/prompts viendo métricas) | [DECIDIDO] |
@@ -678,17 +678,18 @@ Marca `email_verified = true/false`.
 
 ### 9.2 Cadencia (la secuencia "demin_v1")
 
-3 toques por contacto con ángulos distintos. **Cadencia D+0/D+14/D+28 desde sesión 2026-05-25** (Lección 39 — recalibrada desde D+0/D+4/D+10 original tras 12 envíos productivos que mostraron D+4 demasiado agresivo para B2B).
+4 toques por contacto con ángulos distintos. **Cadencia D+0/D+40/D+80/D+120 desde sesión 2026-06-10** (Lección 62 — decisión de producto: espaciar mucho más los follow-ups a no-respondedores y añadir un tercer follow-up. Histórico: D+0/D+4/D+10 [seed] → D+0/D+14/D+28 [L39, 2026-05-25] → D+0/D+40/D+80/D+120 [L62]).
 
 | Step | Día | Ángulo | Objetivo del correo |
 |---|---|---|---|
 | 0 | D+0 | `opening` | Conexión genuina con lo que hace la empresa + propuesta de valor (la fase cero de sus reformas). **Saludo neutro sin marca temporal** (Lección 39 — prohibido "Buenos días"/"Buenas tardes"). |
-| 1 | D+14 | `reframe` | Re-encuadre. Caso de uso, escenario concreto que les puede resonar, o pregunta abierta. Diferente al toque anterior. Sin saludo de apertura (continúa hilo). |
-| 2 | D+28 | `closing` | Honesto y breve. **Pregunta ABIERTA** sin binario forzado (Lección 42 — prohibido "¿lo descartamos definitivamente?" y patrones pasivo-agresivos equivalentes). Asunto neutro tipo "Por si os encaja más adelante", NO "Último correo". |
+| 1 | D+40 | `reframe` | Re-encuadre. Caso de uso, escenario concreto que les puede resonar, o pregunta abierta. Diferente al toque anterior. Sin saludo de apertura (continúa hilo). |
+| 2 | D+80 | `value` | **Cambio de táctica (Lección 62):** tras dos peticiones de conversación sin respuesta, NO repite la petición — baja la fricción y ofrece valor concreto sin compromiso (segunda opinión sobre una partida de demolición/vaciado) o una pregunta abierta de baja fricción sobre su obra. NO es despedida (el cierre llega en el step 3). |
+| 3 | D+120 | `closing` | Cuarto y último toque. Honesto y breve. **Pregunta ABIERTA** sin binario forzado (Lección 42 — prohibido "¿lo descartamos definitivamente?" y patrones pasivo-agresivos equivalentes). Asunto neutro tipo "Por si os encaja más adelante", NO "Último correo". |
 
-Cambio implementado en migración `20260525120000_13_seq_demin_v1_cadence_d14_d28.sql` (UPDATE `sequences.steps` + COMMENT + recálculo defensivo de `messages.status='scheduled'` si existieran).
+Cambio vigente implementado en migración `20260610120000_18_seq_demin_v1_cadence_d40_d80_d120.sql` (UPDATE `sequences.steps` a 4 toques + COMMENTs). El scheduler `outreach/follow_ups.py` lee `sequences.steps[].day` en runtime y ancla cada toque al `sent_at` real del paso previo (delta = diferencia entre días consecutivos = 40d). El ángulo nuevo `value` exigió ampliar la whitelist de ángulos en `follow_ups.py` y `generate_draft.py` (la cadencia es data-driven en días, NO en ángulos nuevos) + su prompt versionado `generate_email_value.md`; el `closing` pasó de `step_index` 2 a 3. (Cadencia previa D+14/D+28: migración 13.)
 
-Si no hay respuesta tras el step 2: marcar como `cold` y programar re-engage a +90 días con ángulo `re_engage_90`.
+Si no hay respuesta tras el último step (3, `closing`): marcar como `cold` y programar re-engage a +90 días con ángulo `re_engage_90`.
 
 Si en cualquier step el lead responde: detener la secuencia inmediatamente.
 
@@ -2451,6 +2452,23 @@ Origen: diagnóstico del follow-up erróneo a Carmen (POR OTRA ARQUITECTURA) —
 **Estado secuencia Carmen final:** opening sent → reply no_ahora archivada → 2 reframes cancelled → re_engage_40 scheduled 28-jun. Coste sesión: **~$0.0001 LLM**. `hitl_mode` intacto.
 
 **Pre-requisito autónomo reforzado (L60-d):** replies+bounces sólidos antes del switch — sin HITL este reframe habría salido solo.
+
+### 2026-06-10 — Cadencia espaciada + 3er follow-up `value`: D+14/D+28 → D+40/D+80/D+120 (L62)
+
+Origen: decisión de producto (Alberto/Fernando). Los follow-ups a quien NO responde se espacian mucho más y se añade un toque adicional. Cadencia desde el opening (D+0): FU1 a +40, FU2 a +80, FU3 a +120. Total 1 opening + 3 follow-ups = 4 correos en 120 días. Supera D11 y §9.2 (antes 3 toques D+14/D+28, L39).
+
+**Estado previo verificado (Paso 0, no asumido):** migración 13 había dejado `demin_v1` en D+0/D+14/D+28 (opening/reframe/closing, 2 follow-ups) — coincidió con la hipótesis. `follow_ups.py` lee `sequences.steps[].day` en runtime y ancla cada toque al `sent_at` real del paso previo (delta = días consecutivos).
+
+**Mapping elegido (decisión Fer):** el ángulo NUEVO `value` va en medio (step 2, D+80) y `closing` se mantiene como cierre final (step 3, D+120, retocado a "~4 meses"). El `value` cambia de táctica: tras dos peticiones de conversación sin respuesta, baja la fricción y ofrece valor sin compromiso. Cuatro ángulos distintos, sin redundancia.
+
+**Ejecutado:**
+1. Migración `20260610120000_18_seq_demin_v1_cadence_d40_d80_d120.sql`: UPDATE `sequences.steps` a 4 toques + COMMENTs (tabla `sequences`, `messages.step_index`, `messages.angle`). NO aplicada a prod en esta sesión (solo repo + commit).
+2. Whitelist de ángulos ampliada con `value`: `follow_ups.py` (Literal + validación + docstring), `generate_draft.py` (Literal + `_STEP_BY_ANGLE` con closing 2→3 + argparse). La cadencia es data-driven en días, NO en ángulos nuevos.
+3. Prompt nuevo versionado `generate_email_value.md` (redactado + verificado adversarialmente contra L39/40/41/42). `closing.md` y `reframe.md` retocados a D+120 y D+40 (header, días, conteo de toques, correos previos).
+4. Colisión `step_index=3` (closing de cadencia vs `re_engage_40` de handle_actions): inocua (dedup re_engage por `angle`; la cadencia se detiene en cualquier reply). Resuelta de raíz: `classify_replies` lee `messages.angle` directo en vez de derivarlo del índice.
+5. Dashboard `metrics/page.tsx`: `value` añadido al array de ángulos. Tests actualizados (ANGLES, parametrizaciones, d14→d40, d28→d120) + test nuevo de límite de `value`. **636 passed** en la suite de workers.
+
+**Contactos en vuelo (decisión PM: confiar + verificar):** idempotencia (contact, step_index) → cero duplicados; ampliar intervalos solo retrasa → ningún toque inmediato sorpresa; hoy 0 contactos han completado el closing (~27 días de envíos) → riesgo del FU3 a "ya completados" nulo al aplicar ahora. Tras aplicar a prod: correr `follow_ups --env prod --dry-run` para confirmar que el primer batch no sale inmediato. Regla "detener si responde" intacta. NO se ejecutaron envíos.
 
 ---
 

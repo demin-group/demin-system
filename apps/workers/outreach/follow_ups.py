@@ -1,16 +1,21 @@
 """follow_ups.py -- Sprint 4 paso 7. Programa step+1 cuando step previo
 fue enviado hace suficientes dias y no hay reply.
 
-Lee la sequence 'demin_v1' (D+0/D+14/D+28 desde migration 13 -- antes era
-D+0/D+4/D+10, recalibrado en sesion 2026-05-25 tras Leccion 39: PM
-detecto que el ritmo D+4 era demasiado agresivo para B2B y reescribio
-a D+14/D+28 mas natural). Para cada step_index 1 (reframe, D+14) y 2
-(closing, D+28):
+Lee la sequence 'demin_v1' (D+0/D+40/D+80/D+120 desde migration 18 --
+historico: D+0/D+4/D+10 seed -> D+0/D+14/D+28 migration 13 [Leccion 39]
+-> D+0/D+40/D+80/D+120 migration 18 [Leccion 62, sesion 2026-06-10: la
+cadencia se espacia mucho mas y se anade un 3er follow-up `value` para
+no-respondedores]). Para cada step_index 1 (reframe, D+40), 2 (value,
+D+80) y 3 (closing, D+120):
 
 1. Busca messages con step_index = N-1 + status='sent' + sent_at <= now()
-   - days_required (14 dias para step 1 desde el step 0; 14 dias entre
-   step 1 y step 2). El worker calcula el delta leyendo `sequences.steps`
-   en runtime; cambiar la cadencia es UPDATE en BD, no code change.
+   - days_required. El delta es la diferencia entre `day` consecutivos en
+   `sequences.steps` (40 dias entre cada toque con la cadencia actual),
+   anclado al sent_at REAL del paso previo. El worker lee `sequences.steps`
+   en runtime; cambiar la cadencia es UPDATE en BD, no code change. Lo unico
+   que NO es data-driven son los `angle` validos (whitelist en `Angle` +
+   load_sequence_steps): un angulo nuevo exige ampliarla aqui y en
+   generate_draft.py.
 2. Filtra contacts que NO tienen reply (sequence detiene en cualquier reply).
 3. Filtra contacts que NO tienen ya message para (contact, step_index=N)
    (idempotencia tras re-correr).
@@ -51,7 +56,7 @@ from shared.config import settings
 from shared.db import get_session
 
 EnvName = Literal["dev", "prod"]
-Angle = Literal["opening", "reframe", "closing"]
+Angle = Literal["opening", "reframe", "value", "closing"]
 
 SEQUENCE_NAME = "demin_v1"
 USD_COST_CAP = 5.0
@@ -97,7 +102,7 @@ def load_sequence_steps(env: EnvName) -> list[FollowUpStep]:
         prev_day = int(steps_raw[i - 1]["day"])
         cur_day = int(steps_raw[i]["day"])
         angle = steps_raw[i]["angle"]
-        if angle not in ("opening", "reframe", "closing"):
+        if angle not in ("opening", "reframe", "value", "closing"):
             raise RuntimeError(f"angle desconocido en sequence: {angle!r}")
         out.append(FollowUpStep(
             next_step_index=i,

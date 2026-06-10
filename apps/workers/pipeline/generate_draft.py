@@ -56,7 +56,7 @@ from sqlalchemy import text
 
 EnvName = Literal["dev", "prod"]
 Tier = Literal["T1", "T2", "T3", "T4"]
-Angle = Literal["opening", "reframe", "closing"]
+Angle = Literal["opening", "reframe", "value", "closing"]
 
 WORKERS_DIR = Path(__file__).resolve().parent.parent
 PROMPTS_DIR = WORKERS_DIR / "shared" / "prompts"
@@ -72,7 +72,12 @@ MAX_TOKENS = 1500
 # Sonnet 4.6 fallback pricing (Anthropic 2026 aprox).
 _SONNET_FALLBACK_USD_PER_MTOK = {"input": 3.0, "output": 15.0}
 
-_STEP_BY_ANGLE: dict[Angle, int] = {"opening": 0, "reframe": 1, "closing": 2}
+# Cadencia demin_v1 (migration 18, 2026-06-10): D+0/D+40/D+80/D+120.
+# El `closing` pasa de step_index 2 a 3 al insertarse el nuevo `value` (D+80)
+# entre el reframe y el closing. Los re_engage (handle_actions) usan step_index
+# 3/4 propios; conviven sin colisión real porque la cadencia se detiene en
+# cualquier reply y un contacto nunca recorre ambos caminos a la vez.
+_STEP_BY_ANGLE: dict[Angle, int] = {"opening": 0, "reframe": 1, "value": 2, "closing": 3}
 
 # ─── Validación post-generación (§10.3 — 4 reglas) ─────────────────────────
 
@@ -630,7 +635,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--env", choices=("dev", "prod"), required=True)
     p.add_argument("--tier", choices=("T1", "T2", "T3", "T4"), required=True)
-    p.add_argument("--angle", choices=("opening", "reframe", "closing"), default="opening")
+    p.add_argument("--angle", choices=("opening", "reframe", "value", "closing"), default="opening")
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--max-cost-usd", type=float, default=USD_COST_CAP)
     p.add_argument("--rerun", action="store_true",

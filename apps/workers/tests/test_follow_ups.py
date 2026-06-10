@@ -57,7 +57,7 @@ def test_followup_sql_excludes_cancelled_from_next_step_check() -> None:
     cadencia o el prompt cambiaron) se regeneren en la siguiente corrida del
     follow_ups cron. Sin este filtro, cancelar bloquea regeneracion futura
     igual que un envio exitoso, lo cual rompe el flujo "cancelar viejo +
-    esperar regen con nueva cadencia D+14".
+    esperar regen con nueva cadencia (p.ej. D+40)".
     """
     import inspect
 
