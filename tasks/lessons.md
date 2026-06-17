@@ -1647,6 +1647,28 @@ Los números L51, L52 y L53 quedaron sin uso. Estaban reservados para la sesión
 
 ---
 
+## 2026-06-17 — Lección 63: aplicar una migración de cadencia en el VPS la ACTIVA en vivo (el timer la lee en runtime); deploy seguro = parar el timer O confirmar 0-inmediatos antes, + limpiar los drafts in-flight obsoletos
+
+**Contexto:** deploy de la cadencia nueva (migración 18, L62) al VPS de producción. El plan ingenuo ("git pull → aplicar migración → dry-run → parar antes de activar") asumía que aplicar la migración era inerte. **No lo es.**
+
+**Lo aprendido (patrón operativo reutilizable):**
+
+1. **Aplicar la migración = activar.** `demin-followups.timer` corre cada hora y lee `sequences.steps` de la BD **en runtime, sin --dry-run**. En cuanto la migración cambia la cadencia en BD, el siguiente disparo del timer actúa con ella. No hay un "punto de parada" entre migrar y activar: o se para el timer antes, o se acepta que migrar es activar. Para un cambio de cadencia, **el dry-run de verificación debe correrse ANTES de aplicar la migración a la BD viva** (reproduciendo la query real con las deltas nuevas inyectadas, en SELECT puro) — no después, porque "después" ya es producción activa.
+
+2. **0-inmediatos hace el deploy de bajo riesgo aunque el timer siga vivo.** El dry-run (simulación read-only y, tras migrar, el `--dry-run` nativo) confirmó 0 candidatos en los 3 steps: ampliar de 14→40 días retrasa a todos y nadie llevaba aún 40 días desde su paso previo (primer toque nuevo ~14-jul). Con eso, aplicar la migración + cancelar los obsoletos + dejar el timer vivo es seguro: su próximo disparo crea 0. El parón del timer pasa a ser cinturón-y-tirantes, no requisito.
+
+3. **Reordenar la cadencia deja drafts in-flight con ángulo obsoleto que hay que cancelar.** La cadencia vieja había dejado en cola HITL **48 reframe** (creados a D+14, demasiado pronto para el espaciado nuevo) y **6 closing** en `step_index=2` — slot que la cadencia nueva trata como `value`. Esos 6 closing, si Gonzalo los aprobaba y enviaba, generarían un segundo closing a +40d (doble-closing). Se cancelan (`status='cancelled'`, **sin** tocar `is_optout` — son drafts obsoletos, no bajas), con precondición de conteo exacto (48/6) y transacción con verificación de rowcount antes del commit. Regla: **un cambio de cadencia exige limpiar los drafts creados bajo el timing/indexado viejo**, no solo cambiar la definición.
+
+4. **El VPS deriva del git: working tree con hotfixes a mano.** El árbol del VPS tenía cambios sin commitear (fix DSN de L60 aplicado a mano, migración 17 y un test como untracked) que bloqueaban el pull. Diagnóstico read-only: 0 commits propios, todo redundante o **superado** por origin (poll_imap del VPS era PRE-L60, 0 marcadores DSN vs 10 en origin). Reconciliado con `git stash push -u` (backup recuperable, no borrar) + `git pull` fast-forward limpio. Regla: **antes de un deploy, reconciliar el working-tree del VPS, no asumir pull limpio**; un `git stash -u` es la vía reversible cuando los cambios locales están superados por origin.
+
+5. **`demin` no tiene sudo sin password** (root reseteada vía Hetzner, NOPASSWD no configurado — ver §"Nota sobre sudo" de todo.md). Parar/reactivar timers (`systemctl stop/start`) lo hace el humano; los workers son oneshot (`uv run` fresco por disparo), así que recogen el código nuevo del pull sin restart. Planear los deploys contando con que el agente NO puede tocar systemd.
+
+**Regla resultante:** desplegar un cambio de cadencia a prod = (a) reconciliar working-tree del VPS (`git stash -u` si hay hotfixes superados) + `git pull`; (b) **dry-run de verificación ANTES de migrar** (simulación SELECT con deltas nuevas) → confirmar 0 toques inmediatos/vencidos; (c) aplicar la migración (scope-check: exactamente la esperada); (d) cancelar los drafts in-flight obsoletos (conteo exacto + transacción + sin opt-out); (e) `--dry-run` nativo de confirmación; (f) si hubiera toques inmediatos, parar el timer (humano, sudo) antes de migrar.
+
+**Aplicado en:** deploy 2026-06-17 al VPS Hetzner — migración 18 aplicada a prod (`apply_migrations.py --env prod`, verify OK), 54 drafts obsoletos cancelados (48 reframe + 6 closing), `hitl_mode` intacto (True), dry-run nativo 0 candidatos. Pendiente 1 (fix DSN L60) quedó también desplegado por el mismo pull. Acceso SSH de Fer añadido (`authorized_keys` con 2 claves); 1C (desactivar password auth) saltado por falta de sudo.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>

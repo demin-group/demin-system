@@ -2552,12 +2552,14 @@ Opciones futuras para estas: (a) búsqueda manual PM/Gonzalo en sus webs cuando 
 
 ## Deploys pendientes al VPS (Hetzner 178.105.143.239)
 
-El VPS ejecuta vía systemd el código de la copia del repo en `/home/demin/demin-system`. Esa copia NO se actualiza sola: requiere `git pull` manual. Hay cambios en `main` que aún no están corriendo en producción continua:
+El VPS ejecuta vía systemd el código de la copia del repo en `/home/demin/demin-system`. Esa copia NO se actualiza sola: requiere `git pull` manual.
 
-### Pendiente 1 — Fix de bounces DSN (L60, commit 2657ad1, 2026-06-04)
-- **Qué:** `poll_imap` corregido para detectar bounces de postmaster/mailer-daemon (DSN) y marcarlos como `bounced` + evento para auto_pause.
-- **Impacto de NO desplegarlo:** los bounces futuros siguen siendo invisibles en producción; el bounce rate de auto_pause sigue infracontado (toca regla no negociable 6). El backfill retroactivo de DECON 86 ya está en BD, pero los NUEVOS bounces no se capturarán hasta el deploy.
-- **Cómo desplegar:** `ssh demin@178.105.143.239` → `cd /home/demin/demin-system` → `git pull origin main`. Verificar si el timer `demin-poll-imap.timer` recoge el código nuevo automáticamente en su próximo run (cada 5 min) o si requiere `sudo systemctl restart` (sudo bloqueado hoy — ver nota sudo abajo).
+### ✅ Desplegado 2026-06-17 — cadencia D+40/80/120 (migración 18, L62/L63) + fix DSN L60
+- **Pull del VPS** `9551ffd → 4793201` (fast-forward; working-tree con hotfixes a mano reconciliado vía `git stash -u`, backup en `stash@{0}`). Esto desplegó de paso el **Pendiente 1 (fix DSN L60)**: `poll_imap` ya corre con la rama DSN; los workers son oneshot (`uv run` fresco por disparo) así que el `demin-poll-imap.timer` recoge el código nuevo sin restart.
+- **Migración 18 aplicada a prod** (`apply_migrations.py --env prod`, verify OK). `sequences.demin_v1.steps` = D+0/40/80/120 (opening/reframe/value/closing).
+- **Activación segura:** dry-run (simulación read-only ANTES de migrar + `--dry-run` nativo después) confirmó **0 toques inmediatos/vencidos** (primer toque nuevo ~14-jul). Por eso no hizo falta parar el `demin-followups.timer`.
+- **Limpieza de drafts in-flight obsoletos:** cancelados (`status='cancelled'`, sin opt-out) **48 reframe** (creados a D+14, demasiado pronto) + **6 closing** en `step_index=2` (slot que la cadencia nueva trata como `value`; riesgo de doble-closing si se enviaban). Precondición de conteo exacto + transacción verificada.
+- `hitl_mode` intacto (True). Detalle completo del patrón en L63.
 
 ### Pendiente 2 — Worker auto_switch (sin desplegar desde su construcción)
 - **Qué:** `auto_switch_to_autonomous.py` + `demin-auto-switch.{service,timer}`.
