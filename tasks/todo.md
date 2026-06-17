@@ -2567,6 +2567,11 @@ El VPS ejecuta vía systemd el código de la copia del repo en `/home/demin/demi
 - **3 drafts de opening** generados con Opus (los únicos 3 vírgenes del universo — pool agotado, 154/157 primaries ya con opening). 1 aprobado por Gonzalo (HITL), 1 OK en cola, 1 con subject pobre (Opus + research fino) a rechazar por Gonzalo.
 - `hitl_mode` intacto (True); `auto_approve` verificado no-op con `hitl_mode=true` (0 aprobaciones `auto`). Coste: Opus 4.8 $5/$25 vs Sonnet $3/$15 (+tokenizer +35%); ~$0.03-0.047/draft. A revisar reply-rate Opus vs Sonnet.
 
+### ✅ Desplegado 2026-06-17 — gate de research + prompts venden con confianza (L65)
+- `generate_draft.py`: `has_sufficient_research` (gate) — sin actividad ni hooks no se genera draft; `mark_company_for_research` marca `_failed='insufficient_research'` (→ `research_prospect --retry-failed`) y reporta `skipped_no_research`. Evita correos-disculpa.
+- 5 prompts de email: prohibidas frases de disculpa/auto-sabotaje; "no inventar" limita los hechos, no el tono; bloque "vender con confianza" en opening (v4).
+- 2 drafts malos cancelados (MECANISMO —estaba `approved` por Gonzalo, sin enviar— + IBERIA, ya rechazado) + ambas empresas marcadas para re-research; sin opt-out; piremol intacto. Commit `dcb9888`, 160 tests OK.
+
 ### Pendiente 2 — Worker auto_switch (sin desplegar desde su construcción)
 - **Qué:** `auto_switch_to_autonomous.py` + `demin-auto-switch.{service,timer}`.
 - **Impacto de NO desplegarlo:** el switch a autónomo no se evalúa automáticamente. PM lo hace manual desde /settings cuando toque (decisión ya tomada, ver L sobre cancelación Sesión 1). Baja prioridad mientras el switch sea manual.

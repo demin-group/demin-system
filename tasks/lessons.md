@@ -1689,6 +1689,24 @@ Los números L51, L52 y L53 quedaron sin uso. Estaban reservados para la sesión
 
 ---
 
+## 2026-06-17 — Lección 65: gate de research antes de generar + el correo VENDE, no se disculpa — el cuello de calidad es el research, no el modelo
+
+**Contexto:** Alberto vio 2 drafts malos en la cola HITL. **MECANISMO SL:** cuerpo con "No conozco a fondo el detalle de vuestros proyectos, así que no voy a presuponer nada" — un correo de venta que se disculpa, suena inseguro. **IBERIA & CAUCASUS:** el "correo" era literalmente el modelo explicando que NO podía redactarlo ("La investigación no incluye tipo de actividad... recomiendo completar la investigación"). Causa raíz común: el pool raspaba el fondo (T4 con research vacío/fino) y el prompt mezclaba "no inventar" con el tono → correos-disculpa.
+
+**Dos arreglos de fondo:**
+
+1. **Gate de research (la pieza clave) — `generate_draft.has_sufficient_research`.** Antes de llamar al LLM se exige research REAL: `tipo_actividad_concreta` no vacío O ≥1 hook real. Si no → NO se genera draft; `mark_company_for_research` marca la empresa `_failed='insufficient_research'` (sale del pool de generate y entra en `research_prospect --retry-failed`) y se reporta `skipped_no_research`. Garantiza que NUNCA salga un correo-disculpa: sin datos, no hay draft. El prompt, por tanto, SIEMPRE tendrá hooks reales — ya no necesita rama "si no hay datos".
+
+2. **Prompt que vende con confianza (los 5 prompts de email).** Sustituida "Honesto: si no sabes algo, no lo inventes" por la distinción explícita: **"no inventar" limita los HECHOS (no afirmar datos falsos del prospecto), NO el tono.** Prohibidas las frases de auto-sabotaje/disculpa ("no conozco a fondo", "no voy a presuponer", "sin datos no puedo"...). Bloque "VENDER CON CONFIANZA" en opening: es venta en frío — abre con seguridad, ancla en el research real, propón valor concreto.
+
+**El cuello de botella de calidad es el RESEARCH, no el modelo.** Opus sobre research vacío da correo vacío (peor: editorializa la falta de datos — L64). Subir el modelo no arregla la falta de material; la palanca de calidad es investigar bien (o no enviar). Conecta con el pool agotado (1.382 fit sin research).
+
+**El HITL no basta solo — por eso el gate es de fondo.** MECANISMO (el de la disculpa) había sido **aprobado por Gonzalo** (no cazó el problema): estaba `approved`, sin enviar, cuando se canceló por instrucción de Alberto. Un humano revisando en volumen aprueba drafts malos; el gate + el prompt evitan que el draft malo EXISTA, que es más robusto que confiar en que el HITL lo cace siempre.
+
+**Aplicado en:** `generate_draft.py` (`has_sufficient_research` + `mark_company_for_research` + gate en `main` + `skipped_no_research`), 5 prompts `generate_email_{opening(v4),reframe,value,closing,re_engage_40}.md`, `tests/test_generate_draft.py` (gate; 160 pass). Commit `dcb9888`. Drafts MECANISMO (B87327136) + IBERIA (B85871283) cancelados + empresas marcadas para re-research; `is_optout` intacto; piremol (research bueno) intacto.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
