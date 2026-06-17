@@ -28,6 +28,7 @@ from pipeline.generate_draft import (
     _load_prompt_for_angle,
     compose_user_vars,
     format_kb_chunks,
+    has_sufficient_research,
     kb_retrieval_query_for_company,
     parse_llm_json,
     process_one_contact,
@@ -267,6 +268,39 @@ def test_format_kb_chunks_concatenates_with_headers() -> None:
 def test_format_kb_chunks_handles_empty() -> None:
     out = format_kb_chunks([])
     assert "sin chunks" in out.lower()
+
+
+# ─── 3b. has_sufficient_research (gate L65) ────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "rd",
+    [
+        {},
+        None,
+        {"_failed": "scraping_failed"},
+        {"tipo_actividad_concreta": "", "hooks_de_personalizacion": []},
+        {"tipo_actividad_concreta": "   ", "hooks_de_personalizacion": ["  ", ""]},
+        {"hooks_de_personalizacion": [123, None]},
+        # _failed manda aunque haya actividad: ya marcada, no regenerar.
+        {"_failed": "insufficient_research", "tipo_actividad_concreta": "constructora"},
+    ],
+)
+def test_has_sufficient_research_false(rd: Any) -> None:
+    assert has_sufficient_research(rd) is False
+
+
+@pytest.mark.parametrize(
+    "rd",
+    [
+        {"tipo_actividad_concreta": "constructora obra residencial"},
+        {"hooks_de_personalizacion": ["coordinan reformas integrales"]},
+        {"tipo_actividad_concreta": "", "hooks_de_personalizacion": ["hook real"]},
+        _DEFAULT_RESEARCH,
+    ],
+)
+def test_has_sufficient_research_true(rd: Any) -> None:
+    assert has_sufficient_research(rd) is True
 
 
 # ─── 4. parse_llm_json ─────────────────────────────────────────────────────

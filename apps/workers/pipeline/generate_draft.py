@@ -228,6 +228,26 @@ def kb_retrieval_query_for_company(item: PendingContact) -> str:
     return composed or item.nombre_empresa
 
 
+def has_sufficient_research(research_data: dict[str, Any]) -> bool:
+    """Gate de calidad (Lección 65). True solo si hay material REAL para
+    personalizar: `tipo_actividad_concreta` no vacío O al menos 1 hook real.
+
+    False si `research_data` está vacío, marcado `_failed`, o sin actividad ni
+    hooks. Sin material no se genera draft (evita correos que se disculpan por
+    lo que no saben — caso MECANISMO/IBERIA 2026-06-17); la empresa se marca
+    para re-research vía `mark_company_for_research`."""
+    if not isinstance(research_data, dict) or not research_data:
+        return False
+    if research_data.get("_failed"):
+        return False
+    actividad = (research_data.get("tipo_actividad_concreta") or "").strip()
+    hooks = research_data.get("hooks_de_personalizacion") or []
+    has_hook = isinstance(hooks, list) and any(
+        isinstance(h, str) and h.strip() for h in hooks
+    )
+    return bool(actividad) or has_hook
+
+
 def format_kb_chunks(chunks: list[dict[str, Any]]) -> str:
     """Compone los chunks recuperados en texto inyectable al `{kb_chunks}`
     del prompt. Si no hay chunks devuelve marcador explícito."""
@@ -526,6 +546,28 @@ def insert_draft(
     return str(row["id"])
 
 
+def mark_company_for_research(env: EnvName, company_id: str) -> None:
+    """Marca la empresa con `_failed='insufficient_research'` (aditivo: preserva
+    el resto de research_data). Efecto: (a) sale del pool de generate
+    (`fetch_pending_contacts` excluye `research_data ? '_failed'`); (b)
+    `research_prospect --retry-failed` la reprocesa. Lección 65: sin research
+    suficiente no se genera draft — la empresa va a research en su lugar."""
+    from shared.db import get_session  # noqa: PLC0415
+
+    with get_session(env) as s:
+        s.execute(
+            text(
+                """
+                UPDATE companies
+                SET research_data = coalesce(research_data, '{}'::jsonb)
+                    || '{"_failed": "insufficient_research"}'::jsonb
+                WHERE id = cast(:cid as uuid)
+                """
+            ),
+            {"cid": company_id},
+        )
+
+
 # ─── Orquestación por contact (red + LLM, sin commits BD) ──────────────────
 
 
@@ -674,7 +716,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     print(f"[fetch] {len(pending)} contacts a procesar")
 
-    counts = {"ok": 0, "ok_with_validation_warnings": 0, "failed": 0}
+    counts = {"ok": 0, "ok_with_validation_warnings": 0, "failed": 0,
+              "skipped_no_research": 0}
     failure_breakdown: dict[str, int] = {}
     total_tok_in = 0
     total_tok_out = 0
@@ -683,6 +726,17 @@ def main(argv: list[str] | None = None) -> int:
     t0 = time.monotonic()
 
     for i, item in enumerate(pending, 1):
+        # Gate de research (Lección 65): sin material real no se genera draft;
+        # la empresa se marca para re-research. Evita correos-disculpa.
+        if not has_sufficient_research(item.research_data):
+            mark_company_for_research(env, item.company_id)
+            counts["skipped_no_research"] += 1
+            print(
+                f"  [{i:>3}/{len(pending)}] {item.nif} {item.email[:40]:<40}  "
+                f"SKIP research insuficiente -> marcada para re-research"
+            )
+            continue
+
         cost_so_far = _estimate_cost_usd(total_tok_in, total_tok_out)
         if cost_so_far > args.max_cost_usd and not cost_alarm:
             cost_alarm = True
@@ -741,6 +795,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  ok validados:                {counts['ok']}  ({_pct(counts['ok'], n_done)})")
     print(f"  ok con warnings (HITL ve):   {counts['ok_with_validation_warnings']}")
     print(f"  failed:                      {counts['failed']}")
+    print(f"  skipped research insuf.:     {counts['skipped_no_research']}  (marcadas para re-research)")
     if failure_breakdown:
         print(f"  failure breakdown:           {failure_breakdown}")
     print(f"  tokens: in={total_tok_in}  out={total_tok_out}")
