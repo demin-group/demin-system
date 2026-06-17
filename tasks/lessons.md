@@ -1669,6 +1669,26 @@ Los números L51, L52 y L53 quedaron sin uso. Estaban reservados para la sesión
 
 ---
 
+## 2026-06-17 — Lección 64: cambio de modelos a Opus — el `.env` no estaba cableado, Opus antepone prosa al JSON, y editorializa cuando el research es pobre
+
+**Contexto:** decisión de Alberto de subir los workers LLM a Opus 4.8. Tres descubrimientos en cadena al ejecutarlo.
+
+**1. El string de Opus: verificar contra la cuenta, no asumir.** `claude-opus-4-8` SÍ existe y la cuenta lo acepta (verificado con `client.models.list()` + llamada mínima `messages.create`). Regla: antes de cambiar un model id en prod, confirmar con `models.list()` / una llamada de prueba — no asumir el string. La cuenta tiene Opus 4.5–4.8, Sonnet 4.5/4.6, Haiku 4.5.
+
+**2. Bug latente: las vars de modelo del `.env` estaban mal nombradas y se ignoraban.** `config.py` (`Settings`, `case_sensitive=True`, `extra="ignore"`) solo lee 4 nombres EXACTOS: `ANTHROPIC_MODEL_CLASSIFY/_GENERATE/_RESEARCH/_REPLY`. El `.env.prod` (y `.env.example`) traían `..._CLASSIFY_DESCR`, `..._GENERATE_DRAFT`, `..._CLASSIFY_REPLY`, `..._SUGGEST_RESPONSE` → **todas ignoradas**; el sistema corría con los **defaults del código** (que por casualidad coincidían: Haiku/Sonnet). **Implicación crítica:** editar las vars que había NO cambia nada. Siempre **verificar el modelo resuelto en runtime** (`settings.* + MODEL_FOR_TASK`), no fiarse de que el `.env` "tiene una var con ese aspecto". Corregido `.env.example` + `.env.prod`. Colateral conocido: `generate_draft` y `suggest_response` comparten `ANTHROPIC_MODEL_GENERATE` (no hay key separada); `research_prospect` y `research_t4_nowebsite` comparten `_RESEARCH`.
+
+**3. Opus 4.8 antepone razonamiento antes del JSON → rompió el parser (2/3 fallos).** Pese a pedir "solo JSON", Opus emite prosa ("La investigación está casi vacía… devuelvo un borrador honesto… {…}") y `json.loads` directo daba `Expecting value: line 1 column 1`. Fix: `shared/jsonutil.extract_json_block` (extrae el primer `{…}` balanceado tolerando prosa/fences), usado en `generate_draft.parse_llm_json` y `research_prospect.parse_research_json`. Tras el fix: 2/2 OK. Regla: cualquier worker que parsee JSON de un LLM "reasoning-forward" debe extraer el bloque, no asumir JSON-only.
+
+**4. Opus editorializa cuando el research es pobre — y la validación mecánica no lo caza.** Para 2 contactos T4 con research fino, Opus generó meta-comentario; uno pasó las validaciones §10.3 con subject literal **"Sin datos para personalizar"** (4 palabras, sin emoji/promesa/leak → válido mecánicamente, basura semánticamente). Lo atrapa el HITL (Gonzalo lo rechaza), no el código. Doble lección: (a) un contacto con research pobre da mal draft con cualquier modelo — no forzar; (b) la validación mecánica no sustituye el criterio humano (HITL sigue siendo la red).
+
+**Coste/beneficio (dato que pidió Alberto):** pricing verificado (claude.com 2026-06-17): **Opus 4.8 $5/$25 por MTok vs Sonnet 4.6 $3/$15** (1.67×) + **Opus 4.7+ usa tokenizer nuevo, hasta +35% tokens** → brecha real mayor. Draft de opening: **~$0.03–0.047 con Opus** vs ~$0.018–0.028 con Sonnet. Gasto total de esta tarea ~$0.35 (incluye 6 reintentos desperdiciados antes del fix del parser). **A revisar:** medir reply-rate de drafts Opus vs Sonnet antes de decidir si el sobrecoste compensa. Tabla `PRICING_USD_PER_MTOKENS` rellenada → el log de coste deja de ser `None`.
+
+**Decisión final aplicada (opción 3 de Alberto):** `classify_descr` vuelve a **Haiku** (L3: Opus es overkill y caro para clasificar); `research_prospect` y `generate_draft` (y por colateral `suggest_response`) en **Opus 4.8**; `classify_reply` en Haiku. `hitl_mode` intacto (True) — verificado que `auto_approve` es no-op con `hitl_mode=true` (0 aprobaciones `auto`; Gonzalo aprueba a mano).
+
+**Aplicado en:** `.env.prod` (VPS, gitignored) + `.env.example` (nombres correctos), `shared/jsonutil.py` (nuevo), `shared/llm.py` (pricing), `pipeline/generate_draft.py` (parser + coste model-aware), `pipeline/research_prospect.py` (parser), `tests/test_generate_draft.py` (test preámbulo, 63 pass). Commit `19764e6`. 3 drafts de opening generados (los únicos 3 vírgenes elegibles del universo actual — el pool está agotado, 154/157 primaries ya con opening; más requiere research de las 1.382 fit sin investigar).
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>

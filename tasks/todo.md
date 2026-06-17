@@ -143,7 +143,7 @@ Métricas operativas que sí trackeamos para diagnosticar (no como objetivo): bo
 | Auth | Supabase Auth (magic link) | Sin contraseñas; entran Gonzalo + colaborador |
 | Workers / pipeline | Python 3.11 en VPS Hetzner CX22 (~5€/mes) | Cron + systemd; SQLAlchemy hacia Supabase |
 | Cola de jobs | Postgres con tabla `jobs` + worker pull | Suficiente al volumen; sin Redis ni Celery |
-| LLM | Anthropic Claude Sonnet 4.5 (clasificación + redacción + extracción) | Calidad alta y precio razonable |
+| LLM | Anthropic Claude por tarea (`MODEL_FOR_TASK`, L3): Haiku 4.5 clasificación/reply, **Opus 4.8 research + redacción** (2026-06-17 L64; antes Sonnet 4.6) | Coste vs calidad por tarea; ver L3/L64 |
 | Embeddings | Voyage AI `voyage-multilingual-2` (1024 dim) | Decidido en Bloque A. Multilingüe (ES nativo) y casa con `vector(1024)` del schema §6.2 |
 | Email envío | Gmail API + dominio propio + Workspace | Custom según D3 |
 | Email warmup | ~~Lemwarm Essential 29€/mes standalone (1 buzón)~~ — **cancelado 2026-05-25 tras validación reputación** (score 97/100, Lección 38). El propio outreach productivo sostiene la deliverability desde aquí. | Descartados Warmup Inbox y Smartlead por bloqueo de App Passwords / OAuth no verificado en Workspace |
@@ -2560,6 +2560,12 @@ El VPS ejecuta vía systemd el código de la copia del repo en `/home/demin/demi
 - **Activación segura:** dry-run (simulación read-only ANTES de migrar + `--dry-run` nativo después) confirmó **0 toques inmediatos/vencidos** (primer toque nuevo ~14-jul). Por eso no hizo falta parar el `demin-followups.timer`.
 - **Limpieza de drafts in-flight obsoletos:** cancelados (`status='cancelled'`, sin opt-out) **48 reframe** (creados a D+14, demasiado pronto) + **6 closing** en `step_index=2` (slot que la cadencia nueva trata como `value`; riesgo de doble-closing si se enviaban). Precondición de conteo exacto + transacción verificada.
 - `hitl_mode` intacto (True). Detalle completo del patrón en L63.
+
+### ✅ Desplegado 2026-06-17 — modelos LLM a Opus 4.8 (research + redacción) + fix parser JSON (L64)
+- **`.env.prod`** (VPS, gitignored): `ANTHROPIC_MODEL_GENERATE` y `_RESEARCH` → `claude-opus-4-8`; `_CLASSIFY` y `_REPLY` siguen Haiku 4.5. Corregido el bug de nombres (config.py `case_sensitive`; las vars `_DESCR/_DRAFT/...` se ignoraban → corría con los defaults del código). Backup `.env.prod.bak.20260617`.
+- **Código** (commit `19764e6`, pulled al VPS): `shared/jsonutil.extract_json_block` (parser robusto a la prosa que Opus antepone al JSON), `PRICING_USD_PER_MTOKENS` rellenada (coste real, no `None`), coste model-aware en generate. 63 tests OK.
+- **3 drafts de opening** generados con Opus (los únicos 3 vírgenes del universo — pool agotado, 154/157 primaries ya con opening). 1 aprobado por Gonzalo (HITL), 1 OK en cola, 1 con subject pobre (Opus + research fino) a rechazar por Gonzalo.
+- `hitl_mode` intacto (True); `auto_approve` verificado no-op con `hitl_mode=true` (0 aprobaciones `auto`). Coste: Opus 4.8 $5/$25 vs Sonnet $3/$15 (+tokenizer +35%); ~$0.03-0.047/draft. A revisar reply-rate Opus vs Sonnet.
 
 ### Pendiente 2 — Worker auto_switch (sin desplegar desde su construcción)
 - **Qué:** `auto_switch_to_autonomous.py` + `demin-auto-switch.{service,timer}`.
