@@ -305,11 +305,14 @@ def process_company(
 
 
 def fetch_pending(
-    env: EnvName, tier: Tier, limit: int | None, reprocess: bool
+    env: EnvName, tier: Tier, limit: int | None, reprocess: bool,
+    require_web: bool = False,
 ) -> list[CompanyRow]:
     """Trae companies con `ia_fit='fit'` del tier solicitado, orden estable
     por NIF. Si `reprocess=False` (default), excluye las que ya tengan al
-    menos un contact (idempotencia)."""
+    menos un contact (idempotencia). Si `require_web=True`, excluye las sin
+    web — evita el fallback fuzzy by-name (0% yield, L58) que en T1/T4 gasta
+    Hunter sobre empresas sin dominio."""
     from shared.db import get_session  # noqa: PLC0415
 
     sql = """
@@ -318,6 +321,8 @@ def fetch_pending(
         WHERE c.ia_fit = 'fit'
           AND c.tier = :tier
     """
+    if require_web:
+        sql += " AND c.web IS NOT NULL AND length(trim(c.web)) > 0"
     if not reprocess:
         sql += " AND NOT EXISTS (SELECT 1 FROM contacts WHERE company_id = c.id)"
     sql += " ORDER BY c.nif"
@@ -430,6 +435,9 @@ def main(argv: list[str] | None = None) -> int:
                    help=f"Cap de llamadas Hunter (default {DEFAULT_MAX_HUNTER_CALLS}, plan Free 25/mes).")
     p.add_argument("--reprocess", action="store_true",
                    help="Ignora el filtro 'sin contacts'. Re-procesa empresas ya pobladas.")
+    p.add_argument("--require-web", action="store_true",
+                   help="Solo empresas con web. Evita el fuzzy by-name (0% yield, L58) "
+                        "que gasta Hunter sobre empresas sin dominio (típico en T4 sin web).")
     args = p.parse_args(argv)
     env: EnvName = args.env
     tier: Tier = args.tier
@@ -441,7 +449,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     print("=" * 76)
 
-    pending = fetch_pending(env, tier, args.limit, args.reprocess)
+    pending = fetch_pending(env, tier, args.limit, args.reprocess, args.require_web)
     if not pending:
         print("No hay empresas pendientes (ia_fit='fit' + tier sin contacts). Nada que hacer.")
         return 0
