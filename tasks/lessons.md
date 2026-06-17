@@ -1707,6 +1707,28 @@ Los números L51, L52 y L53 quedaron sin uso. Estaban reservados para la sesión
 
 ---
 
+## 2026-06-17 — Lección 66: el cuello del pool no es research ni modelo — es DATA (contactos). Hunter casi agotado para este universo
+
+**Contexto:** Alberto pidió "research de 250 + 50 drafts". Al comprobar el pool: **0 empresas fit-sin-research CON web** (las 1.301 sin research no tienen web → `research_prospect`, que scrapea, no puede investigarlas). Pivote acordado: Hunter sobre las 157 fit con research bueno SIN contacto → generar.
+
+**Resultado de Hunter (254 búsquedas, quota 2000):**
+- T1: 0/69. T2: 0/10. T4: 0/122 (solo-web). **T3: 13/53.** Yield global ~5%. → **9 drafts** (T3, todos `corporativo_pequeno`), gated, **9/9 buenos** (0 disculpa).
+
+**Por qué tan bajo:**
+- **T1/T2 (alto valor):** Hunter devuelve emails genéricos (info@…) pero `email_policy.is_acceptable_for_tier` exige decisor/nominal para tiers grandes → rechazados. Domain-search no destapa decisores nominales para estas.
+- **T4 (mínimo valor):** Hunter no tiene datos de empresas tan pequeñas → 0 emails.
+- **T3 (medio):** `corporativo_pequeno` es aceptable → 13 mailboxes genéricos.
+
+**Conclusión estratégica — el bottleneck es DATA, no research ni modelo.** El research del universo con-web ya está hecho (309 buenas); el modelo es Opus (L64); lo que falta son CONTACTOS, y Hunter domain-search está casi agotado para este universo (5% yield, 0 en alto valor). Para repoblar de verdad: (a) **ingesta nueva** (Palanca C SABI limítrofes → más empresas con web) y/o (b) **contactos a nivel decisor** para T1/T2 (LinkedIn/Phantombuster, Palanca A) — Hunter no los encuentra. Subir el modelo o "investigar más" (no hay con web) NO mueve la aguja.
+
+**El gate (L65) aguantó:** 9/9 drafts generados eran research bueno (0 saltados, 0 correos-disculpa) pese a raspar el fondo.
+
+**Coste:** research $0 (0 candidatos, no se corrió — se evitó ~$20 de Opus inútil al comprobar el pool ANTES), generación ~$0.44 Opus (9 × ~$0.049), 254 búsquedas Hunter (gratis, subscription, 254/2000). **Patrón:** comprobar el pool real (read-only) ANTES de lanzar un lote caro — el plan asumía 250 con web y había 0.
+
+**Aplicado en:** `find_contacts.py` (flag `--require-web` para evitar fuzzy by-name sin dominio — 0% yield L58 — commit `9bc91e9`); 9 drafts opening en cola HITL (T3); 13 contactos Hunter nuevos. Pool: 1.727 fit / 1.301 sin research (0 con web) / 309 research bueno.
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>

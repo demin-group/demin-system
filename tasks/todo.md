@@ -2572,6 +2572,12 @@ El VPS ejecuta vía systemd el código de la copia del repo en `/home/demin/demi
 - 5 prompts de email: prohibidas frases de disculpa/auto-sabotaje; "no inventar" limita los hechos, no el tono; bloque "vender con confianza" en opening (v4).
 - 2 drafts malos cancelados (MECANISMO —estaba `approved` por Gonzalo, sin enviar— + IBERIA, ya rechazado) + ambas empresas marcadas para re-research; sin opt-out; piremol intacto. Commit `dcb9888`, 160 tests OK.
 
+### ✅ 2026-06-17 — find_contacts Hunter (intento de reponer pool) + 9 drafts T3 (L66)
+- Pivote: **no había fit-sin-research-CON-web (0)** — las 1.301 sin research no tienen web. Se corrió Hunter sobre las 157 fit-con-research-sin-contacto.
+- Hunter **254 búsquedas → 13 contactos** (solo T3; T1/T2/T4=0; yield ~5%) → **9 drafts opening** (gated, Opus, 9/9 buenos). Flag nuevo `find_contacts --require-web` (commit `9bc91e9`).
+- **Bottleneck = DATA (contactos), no research/modelo.** Para repoblar de verdad: ingesta nueva (Palanca C SABI limítrofes / A LinkedIn para decisores T1/T2). Hunter casi agotado aquí.
+- **Contadores pool:** 1.727 fit / 1.301 sin research (0 con web) / 309 research bueno / quota Hunter 254/2000.
+
 ### Pendiente 2 — Worker auto_switch (sin desplegar desde su construcción)
 - **Qué:** `auto_switch_to_autonomous.py` + `demin-auto-switch.{service,timer}`.
 - **Impacto de NO desplegarlo:** el switch a autónomo no se evalúa automáticamente. PM lo hace manual desde /settings cuando toque (decisión ya tomada, ver L sobre cancelación Sesión 1). Baja prioridad mientras el switch sea manual.
