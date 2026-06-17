@@ -54,6 +54,8 @@ from typing import Any, Literal
 
 from sqlalchemy import text
 
+from shared.jsonutil import extract_json_block
+
 EnvName = Literal["dev", "prod"]
 Tier = Literal["T1", "T2", "T3", "T4"]
 Angle = Literal["opening", "reframe", "value", "closing"]
@@ -69,8 +71,25 @@ USD_COST_CAP = 5.0
 MAX_REGENERATION_RETRIES = 2
 MAX_TOKENS = 1500
 
-# Sonnet 4.6 fallback pricing (Anthropic 2026 aprox).
+# Fallback de pricing si el modelo configurado no está tabulado en shared.llm.
 _SONNET_FALLBACK_USD_PER_MTOK = {"input": 3.0, "output": 15.0}
+
+
+def _generate_pricing() -> dict[str, float]:
+    """Tarifa USD/MTok del modelo realmente configurado para generate_draft
+    (L64: prod usa claude-opus-4-8). Lee la tabla de `shared.llm`; cae al
+    fallback Sonnet si no está tabulado. Lazy import para no cargar config al
+    importar el módulo (los tests son puros)."""
+    try:
+        from shared.config import settings  # noqa: PLC0415
+        from shared.llm import PRICING_USD_PER_MTOKENS  # noqa: PLC0415
+
+        rate = PRICING_USD_PER_MTOKENS.get(settings.ANTHROPIC_MODEL_GENERATE)
+        if rate:
+            return rate
+    except Exception:
+        pass
+    return _SONNET_FALLBACK_USD_PER_MTOK
 
 # Cadencia demin_v1 (migration 18, 2026-06-10): D+0/D+40/D+80/D+120.
 # El `closing` pasa de step_index 2 a 3 al insertarse el nuevo `value` (D+80)
@@ -227,14 +246,7 @@ def parse_llm_json(raw: str) -> tuple[str, str, str]:
     """Devuelve `(subject, body, razonamiento)`. Tolerante a code fences
     (idéntico patrón a classify_descr y research_prospect). Lanza
     `json.JSONDecodeError` o `ValueError` si el output es inválido."""
-    s = raw.strip()
-    if s.startswith("```"):
-        nl = s.find("\n")
-        if nl != -1:
-            s = s[nl + 1:]
-        if s.endswith("```"):
-            s = s[:-3]
-    s = s.strip()
+    s = extract_json_block(raw)
 
     data = json.loads(s)
     if not isinstance(data, dict):
@@ -482,9 +494,9 @@ def insert_draft(
     if draft.failed_validations:
         snapshot["_failed_validations"] = draft.failed_validations
 
+    rate = _generate_pricing()
     cost_usd = (
-        draft.tokens_in * _SONNET_FALLBACK_USD_PER_MTOK["input"]
-        + draft.tokens_out * _SONNET_FALLBACK_USD_PER_MTOK["output"]
+        draft.tokens_in * rate["input"] + draft.tokens_out * rate["output"]
     ) / 1_000_000.0
     step_index = _STEP_BY_ANGLE[angle]
 
@@ -617,10 +629,8 @@ def process_one_contact(
 
 
 def _estimate_cost_usd(tokens_in: int, tokens_out: int) -> float:
-    return (
-        tokens_in * _SONNET_FALLBACK_USD_PER_MTOK["input"]
-        + tokens_out * _SONNET_FALLBACK_USD_PER_MTOK["output"]
-    ) / 1_000_000.0
+    rate = _generate_pricing()
+    return (tokens_in * rate["input"] + tokens_out * rate["output"]) / 1_000_000.0
 
 
 def _pct(n: int, total: int) -> str:

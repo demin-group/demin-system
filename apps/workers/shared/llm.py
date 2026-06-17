@@ -62,12 +62,18 @@ MODEL_FOR_TASK: dict[str, str] = {
 }
 
 # ─── pricing local ──────────────────────────────────────────────────────────
-# TODO(pricing): rellenar con cifras verificadas de
-# https://www.anthropic.com/pricing#api y datar el día que se haga.
-# Formato: USD por 1M tokens, separados input/output.
+# Cifras verificadas en https://claude.com/pricing (API standard, global) el
+# 2026-06-17 (L64). USD por 1M tokens, input/output. NOTA: Opus 4.7+ usa un
+# tokenizer nuevo que puede consumir hasta +35% tokens para el mismo texto, así
+# que el coste real vs Sonnet es mayor que el ratio de tarifas (1.67x).
 PRICING_USD_PER_MTOKENS: dict[str, dict[str, float]] = {
-    # "claude-haiku-4-5-20251001": {"input": <USD/M>, "output": <USD/M>},
-    # "claude-sonnet-4-6":         {"input": <USD/M>, "output": <USD/M>},
+    "claude-opus-4-8": {"input": 5.0, "output": 25.0},
+    "claude-opus-4-7": {"input": 5.0, "output": 25.0},
+    "claude-opus-4-6": {"input": 5.0, "output": 25.0},
+    "claude-opus-4-5-20251101": {"input": 5.0, "output": 25.0},
+    "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
+    "claude-sonnet-4-5-20250929": {"input": 3.0, "output": 15.0},
+    "claude-haiku-4-5-20251001": {"input": 1.0, "output": 5.0},
 }
 
 # ─── timeouts y clientes ────────────────────────────────────────────────────

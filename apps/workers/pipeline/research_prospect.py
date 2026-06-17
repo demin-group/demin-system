@@ -57,6 +57,8 @@ import tldextract
 from selectolax.parser import HTMLParser
 from sqlalchemy import text
 
+from shared.jsonutil import extract_json_block
+
 EnvName = Literal["dev", "prod"]
 Tier = Literal["T1", "T2", "T3", "T4"]
 
@@ -275,7 +277,7 @@ def parse_research_json(raw: str) -> dict[str, Any]:
     levanta ValueError. Si parsea pero le faltan campos, los rellena con
     defaults vacíos. Filtros tier/lenguaje aceptan solo valores conocidos
     (incierto/vacío en otro caso)."""
-    cleaned = _strip_codefences(raw)
+    cleaned = extract_json_block(raw)
     data = json.loads(cleaned)
     if not isinstance(data, dict):
         raise ValueError(f"JSON no es objeto: {type(data).__name__}")

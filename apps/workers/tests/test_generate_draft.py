@@ -320,6 +320,19 @@ def test_parse_razonamiento_optional_defaults_to_empty() -> None:
     assert r == ""
 
 
+def test_parse_strips_prose_preamble_before_json() -> None:
+    """L64: Opus 4.8 antepone razonamiento antes del JSON. El parser debe
+    extraer el objeto igualmente vía extract_json_block."""
+    raw = (
+        "La investigación está casi vacía, pero devuelvo un borrador honesto:\n\n"
+        + _VALID_DRAFT_JSON
+        + "\n\nEspero que encaje."
+    )
+    s, b, _ = parse_llm_json(raw)
+    assert s == "Vaciados interiores en obras Nozar"
+    assert b.startswith("Texto del correo")
+
+
 # ─── 5. compose_user_vars ──────────────────────────────────────────────────
 
 
