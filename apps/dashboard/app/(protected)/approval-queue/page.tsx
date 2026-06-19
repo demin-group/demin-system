@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { hasRealReply, loadThreadsByContact } from "@/lib/conversation";
 
 import { ApprovalQueueContent, type DraftItem } from "./approval-queue-content";
 
@@ -66,7 +67,20 @@ async function loadDrafts(): Promise<DraftItem[]> {
         ia_fit: co.ia_fit,
         ia_fit_reason: co.ia_fit_reason,
       },
+      // Se rellenan abajo con el hilo del contacto (Caso A/B).
+      thread: [],
+      hasReplied: false,
     });
+  }
+
+  // Caso A vs B: cargamos el hilo (correos enviados + respuestas) de cada
+  // contacto. Si ya contestó -> aviso + conversación completa. Si NO contestó
+  // pero hay correos previos (es un follow-up) -> mostramos lo ya enviado como
+  // contexto. Aperturas (contacto virgen) -> hilo vacío -> nada que mostrar.
+  const threadMap = await loadThreadsByContact(items.map((i) => i.contact.id));
+  for (const it of items) {
+    it.thread = threadMap.get(it.contact.id) ?? [];
+    it.hasReplied = hasRealReply(it.thread);
   }
   return items;
 }

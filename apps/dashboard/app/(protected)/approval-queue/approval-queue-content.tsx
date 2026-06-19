@@ -17,6 +17,9 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { ConversationThread } from "@/components/conversation-thread";
+import { gmailSearchUrl } from "@/lib/reply-format";
+import type { ThreadEntry } from "@/lib/conversation";
 
 import { approveMessageAction, rejectMessageAction } from "./actions";
 import { REJECTION_CATEGORIES, type RejectionCategory } from "./categories";
@@ -47,6 +50,9 @@ export type DraftItem = {
     ia_fit: string | null;
     ia_fit_reason: string | null;
   };
+  // Caso A/B: hilo del contacto y si ya contestó (rellenados en loadDrafts).
+  hasReplied: boolean;
+  thread: ThreadEntry[];
 };
 
 type Props = { initialDrafts: DraftItem[] };
@@ -199,6 +205,12 @@ export function ApprovalQueueContent({ initialDrafts }: Props) {
         back();
       } else if (e.key === "a") {
         e.preventDefault();
+        if (current.hasReplied) {
+          toast.error(
+            "Este contacto ya respondió: aprobar por teclado está bloqueado. Responde en Gmail, rechaza, o usa el botón «Aprobar igualmente».",
+          );
+          return;
+        }
         void doApprove();
       } else if (e.key === "e") {
         e.preventDefault();
@@ -214,6 +226,7 @@ export function ApprovalQueueContent({ initialDrafts }: Props) {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [
+    current,
     editor.mode,
     busy,
     skip,
@@ -319,6 +332,34 @@ export function ApprovalQueueContent({ initialDrafts }: Props) {
 
         <Separator />
 
+        {current.thread.length > 0 ? (
+          <CardContent className="space-y-3 pt-4">
+            {current.hasReplied ? (
+              <div className="rounded-md border border-red-400 bg-red-50/50 px-3 py-2 text-xs text-red-900">
+                <strong>⚠ Este contacto ya respondió.</strong> Este follow-up de
+                cadencia probablemente sobra: no mandes un «¿sigues ahí?» a quien
+                ya escribió. Revisa la conversación y responde a mano en Gmail
+                (Lección 45).{" "}
+                <a
+                  href={gmailSearchUrl(current.contact.email)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium underline"
+                >
+                  Responder en Gmail ↗
+                </a>
+              </div>
+            ) : (
+              <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                <strong>Contexto — correos ya enviados</strong> a este contacto
+                (aún sin respuesta). Este draft es el siguiente toque de la
+                cadencia.
+              </div>
+            )}
+            <ConversationThread thread={current.thread} />
+          </CardContent>
+        ) : null}
+
         <CardContent className="space-y-4 pt-4">
           {editor.mode === "view" ? (
             <>
@@ -369,13 +410,17 @@ export function ApprovalQueueContent({ initialDrafts }: Props) {
         <CardContent className="flex flex-wrap gap-2 pt-4">
           {editor.mode === "view" ? (
             <>
-              <Button onClick={() => doApprove()} disabled={busy}>
+              <Button
+                onClick={() => doApprove()}
+                disabled={busy}
+                variant={current.hasReplied ? "outline" : "default"}
+              >
                 {busy ? (
                   <Loader2 className="mr-2 size-4 animate-spin" />
                 ) : (
                   <CheckCircle2 className="mr-2 size-4" />
                 )}
-                Aprobar (a)
+                {current.hasReplied ? "Aprobar igualmente" : "Aprobar (a)"}
               </Button>
               <Button variant="outline" onClick={startEditing} disabled={busy}>
                 <Pencil className="mr-2 size-4" />

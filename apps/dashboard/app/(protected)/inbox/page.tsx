@@ -1,6 +1,13 @@
 import Link from "next/link";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { loadThreadsByContact, type ThreadEntry } from "@/lib/conversation";
+import {
+  CATEGORY_LABEL,
+  categoryBadgeClass,
+  gmailSearchUrl,
+} from "@/lib/reply-format";
+import { ConversationThread } from "@/components/conversation-thread";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 
@@ -27,13 +34,13 @@ const PAGE_SIZE = 25;
 
 type ReplyRow = {
   id: string;
+  contact_id: string;
   received_at: string;
   raw_subject: string | null;
   raw_body: string | null;
   category: string | null;
   is_explicit_optout: boolean;
   ai_classification_reason: string | null;
-  ai_suggested_response: string | null;
   human_action: string;
   contacts: {
     email: string;
@@ -55,8 +62,8 @@ async function loadReplies(
     .from("replies")
     .select(
       `
-        id, received_at, raw_subject, raw_body, category,
-        is_explicit_optout, ai_classification_reason, ai_suggested_response,
+        id, contact_id, received_at, raw_subject, raw_body, category,
+        is_explicit_optout, ai_classification_reason,
         human_action,
         contacts (
           email, nombre, cargo,
@@ -100,6 +107,7 @@ async function loadReplies(
     }
     items.push({
       id: row.id as string,
+      contact_id: row.contact_id as string,
       received_at: row.received_at as string,
       raw_subject: (row.raw_subject as string | null) ?? null,
       raw_body: (row.raw_body as string | null) ?? null,
@@ -107,33 +115,11 @@ async function loadReplies(
       is_explicit_optout: Boolean(row.is_explicit_optout),
       ai_classification_reason:
         (row.ai_classification_reason as string | null) ?? null,
-      ai_suggested_response:
-        (row.ai_suggested_response as string | null) ?? null,
       human_action: row.human_action as string,
       contacts: normalized_ct,
     });
   }
   return items;
-}
-
-const CATEGORY_LABEL: Record<string, string> = {
-  interesado: "Interesado",
-  pide_info: "Pide info",
-  no_ahora: "No ahora",
-  no_interesado: "No interesado",
-  rebote: "Rebote",
-  fuera_oficina: "Fuera oficina",
-  desconocido: "Desconocido",
-};
-
-function categoryBadge(cat: string | null): string {
-  if (cat === "interesado") return "bg-emerald-100 text-emerald-900";
-  if (cat === "pide_info") return "bg-blue-100 text-blue-900";
-  if (cat === "no_ahora") return "bg-amber-100 text-amber-900";
-  if (cat === "no_interesado") return "bg-orange-100 text-orange-900";
-  if (cat === "rebote") return "bg-red-100 text-red-900";
-  if (cat === "fuera_oficina") return "bg-purple-100 text-purple-900";
-  return "bg-muted text-muted-foreground";
 }
 
 function humanActionBadge(act: string): string {
@@ -183,6 +169,8 @@ export default async function InboxPage({
     loadReplies(catFilter === "all" ? null : catFilter, page),
     loadCategoryCounts(),
   ]);
+  // Hilo completo por contacto para mostrar la conversación previa en cada card.
+  const threadMap = await loadThreadsByContact(replies.map((r) => r.contact_id));
 
   // Agrupar por estado pendiente vs auto-handled.
   // Pendientes: orden por urgencia (interesado/pide_info primero, L45),
@@ -258,7 +246,11 @@ export default async function InboxPage({
           ) : (
             <div className="space-y-3">
               {pendientes.map((r) => (
-                <ReplyCard key={r.id} reply={r} />
+                <ReplyCard
+                  key={r.id}
+                  reply={r}
+                  thread={threadMap.get(r.contact_id) ?? []}
+                />
               ))}
             </div>
           )}
@@ -283,7 +275,12 @@ export default async function InboxPage({
           ) : (
             <div className="space-y-3">
               {handled.map((r) => (
-                <ReplyCard key={r.id} reply={r} compact />
+                <ReplyCard
+                  key={r.id}
+                  reply={r}
+                  compact
+                  thread={threadMap.get(r.contact_id) ?? []}
+                />
               ))}
             </div>
           )}
@@ -320,9 +317,11 @@ export default async function InboxPage({
 
 function ReplyCard({
   reply,
+  thread = [],
   compact = false,
 }: {
   reply: ReplyRow;
+  thread?: ThreadEntry[];
   compact?: boolean;
 }) {
   const company = reply.contacts?.companies?.nombre ?? "—";
@@ -359,7 +358,7 @@ function ReplyCard({
           {tier}
         </span>
         <span
-          className={`rounded-md px-2 py-0.5 text-xs uppercase ${categoryBadge(reply.category)}`}
+          className={`rounded-md px-2 py-0.5 text-xs uppercase ${categoryBadgeClass(reply.category)}`}
         >
           {reply.category ? (CATEGORY_LABEL[reply.category] ?? reply.category) : "sin clasificar"}
         </span>
@@ -389,9 +388,34 @@ function ReplyCard({
           IA: {reply.ai_classification_reason}
         </p>
       )}
-      {/* L45: NO mostrar ai_suggested_response. El bot no responde dentro
-          del hilo abierto; Gonzalo responde a mano en Gmail. Si el campo
-          existe en BD por compatibilidad, se ignora en render. */}
+      {/* Conversación completa (hilo): salientes (DEMIN) + entrantes
+          (prospecto). Read-only — L45: solo muestra el contexto; Gonzalo
+          responde a mano en Gmail. */}
+      {!compact && thread.length > 1 && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-xs text-muted-foreground">
+            Ver conversación completa ({thread.length} mensajes)
+          </summary>
+          <div className="mt-2">
+            <ConversationThread thread={thread} />
+          </div>
+        </details>
+      )}
+      {/* L45: ai_suggested_response ni siquiera se carga aquí (ver loadReplies),
+          para que ningún cambio futuro pueda renderizarlo por descuido. El bot
+          no responde dentro del hilo abierto; Gonzalo responde a mano en Gmail. */}
+      {isPending && reply.contacts?.email && (
+        <div className="mt-3">
+          <a
+            href={gmailSearchUrl(reply.contacts.email)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm underline hover:bg-muted"
+          >
+            Responder en Gmail ↗
+          </a>
+        </div>
+      )}
       {isPending && (
         <ReplyActions replyId={reply.id} currentCategory={reply.category} />
       )}

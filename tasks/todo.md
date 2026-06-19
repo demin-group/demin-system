@@ -903,14 +903,19 @@ Acciones por lotes: aprobar todos, regenerar todos los rechazados.
 
 UX: navegación con teclado (j/k para mover, a para aprobar, r para regenerar). Gonzalo tiene que poder revisar 50 drafts en 15 minutos.
 
+**Consciente de respuesta (Caso A/B, 2026-06-19):** por cada draft se reconstruye el hilo del contacto (correos enviados + respuestas) y se decide qué contexto mostrar embebido en el item:
+- **Apertura** (contacto virgen, sin nada previo) → nada extra.
+- **Follow-up sin respuesta** (hay correos enviados pero el contacto no contestó) → panel con los **correos ya enviados** como contexto, para aprobar el siguiente toque con el hilo a la vista.
+- **Ya contestó** → banner «ya respondió» + **conversación completa** + clasificación; el atajo de teclado `a` queda bloqueado y el botón pasa a «Aprobar igualmente» para frenar un follow-up obsoleto (L45/L60), sin quitar el control HITL. La respuesta se da a mano en Gmail (deep-link). No hay redacción IA dentro del hilo.
+
 ### 12.3 Pantalla 3 — Bandeja de respuestas
 
 Lista de `replies` ordenadas por urgencia: primero `interesado`, luego `pide_info`, luego el resto. Por cada respuesta:
 
-- Correo del prospecto
+- Correo del prospecto + **conversación completa** (acordeón con el hilo salientes+entrantes, 2026-06-19)
 - Categoría detectada por IA + razón
-- Draft de respuesta sugerida (si aplica)
-- Botones: aprobar respuesta | editar+aprobar | escalar a Gonzalo | archivar | reclasificar
+- **Sin draft de respuesta IA** (L45: el bot nunca escribe dentro del hilo abierto; `ai_suggested_response` ni siquiera se carga en el render)
+- Botones: **Responder en Gmail** (deep-link, respuesta manual de Gonzalo) | marcar respondida | archivar | reclasificar
 
 ### 12.4 Pantalla 4 — KB editor
 
@@ -2469,6 +2474,26 @@ Origen: decisión de producto (Alberto/Fernando). Los follow-ups a quien NO resp
 5. Dashboard `metrics/page.tsx`: `value` añadido al array de ángulos. Tests actualizados (ANGLES, parametrizaciones, d14→d40, d28→d120) + test nuevo de límite de `value`. **636 passed** en la suite de workers.
 
 **Contactos en vuelo (decisión PM: confiar + verificar):** idempotencia (contact, step_index) → cero duplicados; ampliar intervalos solo retrasa → ningún toque inmediato sorpresa; hoy 0 contactos han completado el closing (~27 días de envíos) → riesgo del FU3 a "ya completados" nulo al aplicar ahora. Tras aplicar a prod: correr `follow_ups --env prod --dry-run` para confirmar que el primer batch no sale inmediato. Regla "detener si responde" intacta. NO se ejecutaron envíos.
+
+---
+
+### 2026-06-19 — Approval Queue + Inbox conscientes de respuesta (Caso A/B, hilo completo)
+
+Origen: decisión de producto (Fer). La cola de aprobación y el inbox pasan a distinguir si el prospecto YA contestó. Feature **100% dashboard, READ-ONLY**, sin tocar workers, BD ni cadencia. **L45 se MANTIENE**: la IA no redacta dentro del hilo; Gonzalo responde a mano en Gmail.
+
+**Decisiones cerradas (Fer):**
+- Caso A (no contestó / silencio) → la IA SÍ redacta: apertura + cadencia D+40/D+80/D+120 (ya existía). La "redacción IA" se queda SOLO aquí.
+- Caso B (ya contestó) → la IA NO redacta. Se muestra la conversación completa + clasificación; respuesta manual en Gmail.
+- Panel de conversación en LOS DOS sitios (inbox y, embebido, en el item de la cola), reusando un componente común.
+
+**Ejecutado (6 ficheros, `apps/dashboard/`):**
+1. Nuevo `lib/conversation.ts`: `loadThreadsByContact()` reconstruye el hilo por `contact_id` (messages `sent`/`bounced` + `replies`, orden cronológico por timestamp real); `hasRealReply()` excluye `rebote`/`fuera_oficina` (un inbound sin clasificar SÍ cuenta). No hay `thread_id`: se agrupa por contacto (1 contacto = 1 hilo).
+2. Nuevo `lib/reply-format.ts`: `CATEGORY_LABEL` + `categoryBadgeClass` + `gmailSearchUrl` (dedup de helpers que estaban duplicados en el inbox).
+3. Nuevo `components/conversation-thread.tsx`: panel presentacional reutilizable (server-renderable; válido también dentro del client component sin "use client").
+4. `inbox/page.tsx`: cada respuesta abre la conversación completa (acordeón `<details>`, cero JS) + botón "Responder en Gmail". `ai_suggested_response` deja de cargarse (endurecido contra L45).
+5. `approval-queue/page.tsx` + `approval-queue-content.tsx`: detección Caso A/B; si `hasReplied`, banner de aviso + panel del hilo; atajo `a` bloqueado y botón "Aprobar igualmente" (frena el follow-up obsoleto, L60) preservando el override HITL.
+
+**Verificación:** el dashboard NO está instalado en local (app de Vercel; el typecheck/lint corre en el deploy). Verificado por **revisión adversarial multi-agente** (3 lentes: TypeScript/RSC, lógica de datos, cumplimiento L45) → **0 blockers, 0 high**. Se aplicaron las 3 mejoras menores que salieron (freno real del approve en Caso B, no cargar `ai_suggested_response`, orden del hilo por timestamp real). Pendiente: confirmación visual en el deploy de Vercel.
 
 ---
 

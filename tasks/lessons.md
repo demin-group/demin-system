@@ -1729,6 +1729,22 @@ Los números L51, L52 y L53 quedaron sin uso. Estaban reservados para la sesión
 
 ---
 
+## 2026-06-19 — Lección 67: una feature que parece contradecir una regla no negociable NO la deroga unilateralmente — para y pregunta; el humano suele reencuadrarla más simple
+
+**Contexto:** Fer pidió un Approval/Inbox "consciente de respuesta": apertura si no han hablado, seguimiento si ya contestaron. El mapeo del código (5 subagentes en paralelo) destapó que "la IA genera el seguimiento dentro del hilo" chocaba de frente con **L45** (el bot nunca escribe dentro de un hilo abierto; Gonzalo responde a mano). Mi primer plan asumió derogar L45 vía HITL y diseñó 5 piezas nuevas (prompt + ángulo + worker + migración + threading en `send_gmail`).
+
+**Corrección humana:** Fer NO derogó L45. La reencuadró: L45 se MANTIENE → la IA **no** redacta si han contestado; la IA solo redacta en silencio (la cadencia que YA existía); el Caso B es **100% read-only** (mostrar hilo + clasificación + responder a mano en Gmail). El reencuadre **eliminó ~5 piezas** de la implementación: quedó en solo dashboard read-only (3 ficheros nuevos + 3 editados, sin migración, sin workers, sin tocar `send_gmail`).
+
+**Regla resultante:**
+1. Cuando una feature nueva parece contradecir un `[DECIDIDO]` o una lección no negociable (Apéndice A regla 9), **NO la implementes asumiendo que la deroga** — PARA y plantéaselo al humano con las opciones explícitas. La decisión de tumbar una regla es suya, no mía.
+2. **Lo más simple suele ser respetar la regla, no sortearla.** El reencuadre del humano fue mucho más barato que mi plan de "derogar y construir".
+3. **Mapea el código real ANTES de prometer un diseño.** El conflicto con L45 no era evidente desde la petición; lo destapó el mapeo en paralelo. Descubrir el choque antes de planear evitó construir lo que no era.
+4. Las **preguntas de clarificación** (apertura/seguimiento, in-thread, categorías) no fueron fricción: revelaron una simplificación de alcance enorme. Preguntar lo que de verdad cambia el diseño > asumir.
+
+**Aplicado en:** feature Caso A/B (inbox hilo completo + cola consciente de respuesta), 6 ficheros en `apps/dashboard/` (`lib/conversation.ts`, `lib/reply-format.ts`, `components/conversation-thread.tsx` nuevos; `inbox/page.tsx`, `approval-queue/page.tsx`, `approval-queue-content.tsx` editados). Ver log §19 (2026-06-19).
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>
