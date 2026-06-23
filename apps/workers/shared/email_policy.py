@@ -90,6 +90,14 @@ _STRICT_DECISOR_PATTERNS = [
     r"\bcoo\b",
     r"\bcto\b",
     r"\bcio\b",
+    # Formas inglesas completas (Hunter devuelve cargos en inglés: e.g. Hunter
+    # dio "Chief Executive Officer" para el CEO de Consolidaciones y Contratas
+    # — sin esto caía a `nominal` en vez de `decisor`).
+    r"chief\s+executive",
+    r"chief\s+financial",
+    r"chief\s+operating",
+    r"chief\s+technical",
+    r"chief\s+technology",
     r"director\s+general",
     r"director\s+ejecutivo",
     r"director\s+t[eé]cnico",
