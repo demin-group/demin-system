@@ -263,13 +263,14 @@ class OpenMercantilClient:
         físico del BORME, o None si no hay."""
         slug = self.resolve_slug(nif, company_name)
         if not slug:
-            logger.info("openmercantil sin_slug nif=%s name=%s", nif, company_name)
+            logger.info("openmercantil sin_slug nif=%s", nif)
             return None
         officer = pick_best_officer(self.officers(slug))
+        # RGPD/PII: NO logamos el nombre de la persona física. Solo si hubo
+        # match y el cargo (dato de función, no personal).
         logger.info(
-            "openmercantil slug=%s decisor=%s rol=%s",
-            slug, officer.full_name_natural if officer else None,
-            officer.role if officer else None,
+            "openmercantil slug=%s decisor_found=%s rol=%s",
+            slug, officer is not None, officer.role if officer else None,
         )
         return officer
 
