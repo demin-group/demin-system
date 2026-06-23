@@ -379,6 +379,28 @@ def test_classify_and_filter_t2_with_personas_extraidas_recovers_nominal() -> No
     assert out[0].email_priority == 3
 
 
+def test_classify_and_filter_solo_calidad_drops_generico_in_t3() -> None:
+    """Modo cero info@: en T3 (que normalmente acepta corporativo_pequeno),
+    solo_calidad descarta el genérico y conserva decisor/nominal."""
+    company = _company(tier="T3")
+    raw = [
+        _contact("juan@acme.es", position="Director General", person_name="Juan", confidence=92),
+        _contact("info@acme.es", confidence=70),
+        _contact("maria@acme.es", position="Project Manager", person_name="María", confidence=80),
+    ]
+    out = classify_and_filter(raw, company, solo_calidad=True)
+    types = {c.email_type for c in out}
+    assert types == {"decisor", "nominal"}
+    assert "info@acme.es" not in {c.email for c in out}
+
+
+def test_classify_and_filter_solo_calidad_default_off_keeps_generico() -> None:
+    """Por defecto (solo_calidad=False) el comportamiento NO cambia: info@ entra."""
+    company = _company(tier="T3")
+    out = classify_and_filter([_contact("info@acme.es", confidence=70)], company)
+    assert {c.email_type for c in out} == {"corporativo_pequeno"}
+
+
 def test_classify_and_filter_t2_with_personas_extraidas_can_promote_to_decisor() -> None:
     """T2 con cruce: si el cargo enriquecido es decisor estricto, sube a decisor."""
     company = _company(

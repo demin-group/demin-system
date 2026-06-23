@@ -219,6 +219,7 @@ def enrich_with_personas_extraidas(
 def classify_and_filter(
     raw_contacts: list[Contact],
     company: CompanyRow,
+    solo_calidad: bool = False,
 ) -> list[CandidateContact]:
     """De los contacts crudos del adapter al subset aceptable + priorizado.
 
@@ -248,6 +249,15 @@ def classify_and_filter(
                 company.nif, enriched.email, cls.email_type, cls.reason,
             )
             continue
+        if solo_calidad and cls.email_type == "corporativo_pequeno":
+            # Modo cero info@: solo email personal de un responsable
+            # (decisor/nominal); los buzones genéricos (info@/contacto@…) se
+            # descartan en vez de aceptarse como corporativo_pequeno.
+            logger.debug(
+                "solo_calidad: descarto genérico nif=%s email=%s",
+                company.nif, enriched.email,
+            )
+            continue
         priority = assign_priority(
             cls.email_type, enriched.confidence, enriched.position
         )
@@ -271,6 +281,7 @@ def classify_and_filter(
 def process_company(
     company: CompanyRow,
     hunter: Any,  # `EmailFinder` runtime; tipo Any para no atar el tipo en tests
+    solo_calidad: bool = False,
 ) -> tuple[list[CandidateContact], int]:
     """Procesa una empresa: resuelve dominio → llama Hunter → clasifica → top N.
 
@@ -296,7 +307,7 @@ def process_company(
     else:
         return [], 0
 
-    classified = classify_and_filter(raw, company)
+    classified = classify_and_filter(raw, company, solo_calidad)
     selected = select_top_candidates(classified, MAX_CONTACTS_PER_COMPANY)
     return selected, calls
 
@@ -438,6 +449,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--require-web", action="store_true",
                    help="Solo empresas con web. Evita el fuzzy by-name (0% yield, L58) "
                         "que gasta Hunter sobre empresas sin dominio (típico en T4 sin web).")
+    p.add_argument("--solo-calidad", action="store_true",
+                   help="Cero info@: descarta los genéricos (corporativo_pequeno). "
+                        "Solo inserta decisor/nominal — email personal de un responsable.")
     args = p.parse_args(argv)
     env: EnvName = args.env
     tier: Tier = args.tier
@@ -445,7 +459,8 @@ def main(argv: list[str] | None = None) -> int:
     print("=" * 76)
     print(
         f"find_contacts  env={env}  tier={tier}  limit={args.limit}  "
-        f"max_hunter_calls={args.max_hunter_calls}  reprocess={args.reprocess}"
+        f"max_hunter_calls={args.max_hunter_calls}  reprocess={args.reprocess}  "
+        f"solo_calidad={args.solo_calidad}"
     )
     print("=" * 76)
 
@@ -480,7 +495,7 @@ def main(argv: list[str] | None = None) -> int:
                 break
 
             try:
-                selected, calls = process_company(company, hunter)
+                selected, calls = process_company(company, hunter, args.solo_calidad)
             except Exception as e:
                 errors += 1
                 logger.exception(

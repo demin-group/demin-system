@@ -362,6 +362,7 @@ def fetch_pending_contacts(
     angle: Angle,
     limit: int | None,
     rerun: bool,
+    solo_calidad: bool = False,
 ) -> list[PendingContact]:
     """Trae contacts elegibles para draft, **filtrando por `is_primary=true`**
     (paso 6.5 — fix del envío simultáneo a múltiples contacts/empresa).
@@ -409,6 +410,9 @@ def fetch_pending_contacts(
           AND ct.is_optout = false
           AND ct.is_primary = true
     """
+    if solo_calidad:
+        # Cero info@: solo email personal de un responsable (decisor/nominal).
+        sql += "          AND ct.email_type IN ('decisor', 'nominal')\n"
     if not rerun:
         sql += """
           AND NOT EXISTS (
@@ -694,6 +698,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="Ignora idempotencia — genera draft aunque ya exista message del mismo step_index.")
     p.add_argument("--no-voyage-sleep", action="store_true",
                    help="Skipea el sleep entre embeds Voyage (solo si la cuenta tiene payment method).")
+    p.add_argument("--solo-calidad", action="store_true",
+                   help="Cero info@: solo dibuja drafts a contactos decisor/nominal "
+                        "(email personal de un responsable), excluye corporativo_pequeno.")
     args = p.parse_args(argv)
     env: EnvName = args.env
     tier: Tier = args.tier
@@ -702,7 +709,8 @@ def main(argv: list[str] | None = None) -> int:
     print("=" * 76)
     print(
         f"generate_draft  env={env}  tier={tier}  angle={angle}  "
-        f"limit={args.limit}  max_cost_usd={args.max_cost_usd}  rerun={args.rerun}"
+        f"limit={args.limit}  max_cost_usd={args.max_cost_usd}  rerun={args.rerun}  "
+        f"solo_calidad={args.solo_calidad}"
     )
     print("=" * 76)
 
@@ -710,7 +718,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[prompt] cargado generate_email_{angle}.md: "
           f"system={len(system)} chars, user_template={len(user_template)} chars")
 
-    pending = fetch_pending_contacts(env, tier, angle, args.limit, args.rerun)
+    pending = fetch_pending_contacts(env, tier, angle, args.limit, args.rerun, args.solo_calidad)
     if not pending:
         print("No hay contacts pendientes. Nada que hacer.")
         return 0
