@@ -3,8 +3,11 @@
 (1) CUARENTENA: pone is_primary=false en los contactos sospechosos (TLD
     extranjero, dominio que no cuadra con la razón social, sector raro) para
     que NO se dibujen ni envíen. Quedan en BD para investigarlos luego.
-(2) FIX: corrige un email malformado (espacio %20 al inicio) — la empresa es
-    correcta, solo el email venía sucio del scraping.
+    Se commitea ANTES del FIX: un fallo en (2) no debe deshacer (1).
+(2) FIX: corrige emails malformados (prefijo "%20" del scraping) — la empresa
+    es correcta, solo el email venía sucio. Si ya existe el duplicado limpio,
+    migra mensajes + is_primary al limpio y BORRA el roto (renombrar daría
+    UniqueViolation, el bug del 30-jun).
 
 NO envía nada. Idempotente (re-ejecutar no duplica). Solo lectura tras aplicar.
 
@@ -33,8 +36,11 @@ CUARENTENA = [
     "salcon@salconalimentaria.es",      # sector raro (alimentaria) — posible empresa distinta
 ]
 
-# Email roto → FIX (quita el %20 inicial). Empresa correcta (ESTUDIO RYD SL).
-FIX_SUFFIX = "beatrizmejiamarti@estudiorydinteriorismo.es"
+# Emails rotos (prefijo "%20" del scraping) → FIX. Empresas correctas.
+MALFORMADOS = [
+    "beatrizmejiamarti@estudiorydinteriorismo.es",  # ESTUDIO RYD SL
+    "crisduar@crisduar.es",                         # CRISDUAR SL
+]
 
 
 with get_session(env) as s:  # type: ignore[arg-type]
@@ -54,16 +60,45 @@ with get_session(env) as s:  # type: ignore[arg-type]
         quar += n
         print(f"   {'✓' if n else '–'} {email:<40} ({n} afectado)")
     print(f"   → {quar} contactos en cuarentena")
+    s.commit()  # cuarentena guardada aunque el FIX falle
 
-    print("\n[2] FIX email malformado")
-    fix = s.execute(
-        text("update contacts set email=:clean "
-             "where email like :pat and email <> :clean"),
-        {"clean": FIX_SUFFIX, "pat": "%" + FIX_SUFFIX},
-    )
-    print(f"   {'✓' if fix.rowcount else '–'} {FIX_SUFFIX} ({fix.rowcount or 0} corregido)")
-
-    s.commit()
+    print("\n[2] FIX emails malformados")
+    for clean in MALFORMADOS:
+        mal_rows = s.execute(
+            text("select id::text cid, is_primary from contacts "
+                 "where email like :pat and email <> :clean"),
+            {"pat": "%" + clean, "clean": clean},
+        ).mappings().all()
+        if not mal_rows:
+            print(f"   – {clean} (nada que corregir)")
+            continue
+        clean_row = s.execute(
+            text("select id::text cid, is_primary from contacts "
+                 "where lower(email) = lower(:c)"),
+            {"c": clean},
+        ).mappings().first()
+        for mal in mal_rows:
+            if clean_row is None:
+                s.execute(
+                    text("update contacts set email=:c where id=cast(:i as uuid)"),
+                    {"c": clean, "i": mal["cid"]},
+                )
+                print(f"   ✓ {clean} (renombrado in situ)")
+            else:
+                s.execute(
+                    text("update messages set contact_id=cast(:c as uuid) "
+                         "where contact_id=cast(:m as uuid)"),
+                    {"c": clean_row["cid"], "m": mal["cid"]},
+                )
+                if mal["is_primary"] and not clean_row["is_primary"]:
+                    s.execute(
+                        text("update contacts set is_primary=true where id=cast(:i as uuid)"),
+                        {"i": clean_row["cid"]},
+                    )
+                s.execute(text("delete from contacts where id=cast(:i as uuid)"),
+                          {"i": mal["cid"]})
+                print(f"   ✓ {clean} (duplicado roto borrado; mensajes e is_primary migrados)")
+        s.commit()
 
     # Estado tras sanear: qué se dibujará (virgin primary enviable, por tipo)
     print("\n[3] Pendientes que QUEDAN para dibujar (tras sanear)")
