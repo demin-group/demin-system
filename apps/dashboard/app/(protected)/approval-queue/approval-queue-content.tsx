@@ -61,6 +61,31 @@ type EditState =
   | { mode: "view" }
   | { mode: "editing"; subject: string; body: string };
 
+// Marcado explícito de qué toque es cada draft: un recontacto (follow-up de
+// cadencia o re-enganche) debe distinguirse a simple vista de un 1er contacto.
+const RECONTACT_LABELS: Record<string, string> = {
+  reframe: "2º toque · reframe",
+  value: "3º toque · value",
+  closing: "4º toque · closing",
+  re_engage_40: "re-enganche 40d",
+  re_engage_90: "re-enganche 90d",
+};
+
+function TouchBadge({ angle, stepIndex }: { angle: string; stepIndex: number }) {
+  if (angle === "opening") {
+    return (
+      <span className="rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
+        1er contacto
+      </span>
+    );
+  }
+  return (
+    <span className="rounded-md border border-violet-300 bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-900">
+      ↩ RECONTACTO — {RECONTACT_LABELS[angle] ?? `step ${stepIndex} · ${angle}`}
+    </span>
+  );
+}
+
 const CATEGORY_LABELS: Record<RejectionCategory, string> = {
   tono: "Tono no encaja",
   datos_incorrectos: "Datos incorrectos (hooks alucinados, research mal)",
@@ -273,7 +298,14 @@ export function ApprovalQueueContent({ initialDrafts }: Props) {
           </h1>
           <p className="text-sm text-muted-foreground">
             {drafts.length} draft{drafts.length === 1 ? "" : "s"} pendiente
-            {drafts.length === 1 ? "" : "s"}. Posicion {index + 1}/{drafts.length}.
+            {drafts.length === 1 ? "" : "s"}
+            {(() => {
+              const recontactos = drafts.filter((d) => d.angle !== "opening").length;
+              return recontactos > 0
+                ? ` (${drafts.length - recontactos} 1er contacto · ${recontactos} recontacto${recontactos === 1 ? "" : "s"})`
+                : "";
+            })()}
+            . Posicion {index + 1}/{drafts.length}.
             Teclado: <kbd>j</kbd>/<kbd>k</kbd> nav, <kbd>a</kbd> aprobar,{" "}
             <kbd>e</kbd> editar, <kbd>x</kbd> rechazar+optout, <kbd>s</kbd> skip.
           </p>
@@ -292,6 +324,7 @@ export function ApprovalQueueContent({ initialDrafts }: Props) {
                 {current.company.tier}
               </span>
             ) : null}
+            <TouchBadge angle={current.angle} stepIndex={current.step_index} />
             {current.company.web ? (
               <a
                 href={`https://${current.company.web.replace(/^https?:\/\//, "")}`}
