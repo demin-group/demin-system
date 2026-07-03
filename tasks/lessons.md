@@ -1745,6 +1745,21 @@ Los números L51, L52 y L53 quedaron sin uso. Estaban reservados para la sesión
 
 ---
 
+## 2026-07-03 — Lección 68: scripts multi-paso sobre BD — commit por paso independiente; sobre un unique, merge+delete en vez de renombrar
+
+**Contexto:** `sanea_pendientes.py` hacía cuarentena (paso 1) + fix de email malformado (paso 2) con un único `commit()` al final. El paso 2 petó con `UniqueViolation` (el email limpio ya existía como fila duplicada) → rollback también del paso 1: la cuarentena "ejecutada" el 30-jun nunca llegó a guardarse, y pasó desapercibido hasta releer el HANDOFF.
+
+**Corrección humana:** ninguna directa (bug propio detectado vía HANDOFF); se captura para no repetir el patrón.
+
+**Regla resultante:**
+1. En scripts de BD con pasos independientes, **un commit por paso** — y el paso más arriesgado SIEMPRE al final.
+2. Ante un "renombrar a X" donde X puede ya existir (constraint unique), el patrón es **migrar referencias + borrar la fila rota** (merge+delete), no `UPDATE` del valor.
+3. Tras correr un script de saneamiento, **verificar en BD que el efecto quedó aplicado** (query de comprobación), no fiarse del output del script.
+
+**Aplicado en:** `apps/workers/scripts/sanea_pendientes.py` (commit `31fecae`).
+
+---
+
 <!-- Plantilla para futuras lecciones:
 
 ## YYYY-MM-DD — Lección N: <título corto>

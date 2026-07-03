@@ -2497,6 +2497,20 @@ Origen: decisión de producto (Fer). La cola de aprobación y el inbox pasan a d
 
 ---
 
+### 2026-07-03 — "Mete los que tengas": la cola pasa de 0 a 24 drafts (18 revividos + 6 de research reintentado) + badge RECONTACTO
+
+Origen: Fer pidió llenar la Approval Queue con contactos NUEVOS (explícitamente no recontactos). El pool de 1er toque estaba agotado; se exprimió lo que quedaba:
+
+- **Revive de podados** (`scripts/revive_pruned.py`, nuevo): los 18 drafts step-0 cancelados el 18-jun por `no_verificado_prune` (Hunter risky/catch-all) vuelven a `drafted`, con marcador `_revived_from` en `research_snapshot`. Decisión Fer: a la cola igualmente — el HITL decide uno a uno y la auto-pausa protege el dominio si rebotan.
+- **Desatasco de research** (`scripts/desatasca_research.py`, nuevo): `research_done_at=NULL` en 25 empresas fit con web y contacto virgen cuyo research quedó `_failed`. Reintento vía `run_research_draft.sh` (ojo: exportar `PATH=/home/demin/.local/bin:$PATH` en nohup, `uv` no está en el PATH no-login): **6 drafts nuevos** (sanbro, nuarco, trazo, iplcorporacion, fernandezmolina —decisor—, salcon); 19 volvieron a fallar (webs rotas de verdad). El draft de fernandezmolina falló 1ª vez por rate-limit de Voyage y salió al reintentar `generate_draft`.
+- **Fix `sanea_pendientes.py`**: commit de la cuarentena ANTES del FIX (L68) + FIX generalizado a los 2 emails `%20` con manejo de duplicado limpio (merge+delete). **PENDIENTE DE EJECUTAR** — el clasificador de permisos bloqueó los DELETE en prod. Hasta que corra: NO aprobar el draft de `%20crisduar@crisduar.es` (email roto) y RECHAZAR el de `salcon@salconalimentaria.es` (sospechoso; se dibujó porque la cuarentena no estaba aplicada).
+- **Dashboard**: badge violeta "↩ RECONTACTO — 2º/3º/4º toque / re-enganche" vs "1er contacto" en cada draft + desglose 1º/recontactos en el subtítulo de la cola (`4c18d41`; deploy Vercel verificado por cambio de huella del build).
+- **Verificado de paso**: la cadencia D+0/40/80/120 SÍ está aplicada en prod; los timers systemd del VPS corren todo el pipeline solos (`demin-followups` horario → la cola se llenará sola al madurar: ~8 el 5-jul, ~194 hasta el 2-ago); 14 contactos tienen reply (excluidos de follow-up); 4 `re_engage` aprobados esperan el despause del mailbox.
+
+Estado: cola 0 → **24**. Commits `31fecae`, `4c18d41`. Acceso VPS ahora autónomo (passphrase en Llavero macOS).
+
+---
+
 ## §20 — Palancas futuras de expansión del pool
 
 Esta lista la mantenemos para que cuando PM pregunte "¿qué más podemos hacer para subir el pool de contactos?", Claude (PM consultor) o Code puedan responder con opciones concretas. NO ejecutar ninguna sin decisión PM explícita.
